@@ -22,16 +22,19 @@ def bond_dirs_by_mapnum(mol: Chem.Mol) -> Dict[Tuple[int, int], BondDir]:
     """
     bond_dirs_by_mapnum: Dict[Tuple[int, int], BondDir] = {}
     for b in mol.GetBonds():
-        i = None
-        j = None
-        if b.GetBeginAtom().GetAtomMapNum():
-            i = b.GetBeginAtom().GetAtomMapNum()
-        if b.GetEndAtom().GetAtomMapNum():
-            j = b.GetEndAtom().GetAtomMapNum()
-        if i is None or j is None or b.GetBondDir() == BondDir.NONE:
+        bond_dir = b.GetBondDir()
+        if bond_dir == BondDir.NONE:
             continue
-        bond_dirs_by_mapnum[(i, j)] = b.GetBondDir()
-        bond_dirs_by_mapnum[(j, i)] = BondDirOpposite[b.GetBondDir()]
+        begin_atom_map_num = b.GetBeginAtom().GetAtomMapNum()
+        if not begin_atom_map_num:
+            continue
+        end_atom_map_num = b.GetEndAtom().GetAtomMapNum()
+        if not end_atom_map_num:
+            continue
+        bond_dirs_by_mapnum[(begin_atom_map_num, end_atom_map_num)] = bond_dir
+        bond_dirs_by_mapnum[(end_atom_map_num, begin_atom_map_num)] = BondDirOpposite[
+            bond_dir
+        ]
     return bond_dirs_by_mapnum
 
 
@@ -451,7 +454,7 @@ def restore_bond_stereo_to_sp2_atom(
                             bond_to_spec.SetBondDir(bond_dir)
                         return True
 
-    if a.GetDegree() == 3:
+    elif a.GetDegree() == 3:
         # If we lost the branch defining stereochem, it must have been replaced
         for bond_to_spec in a.GetBonds():
             if bond_to_spec.GetBondType() == BondType.DOUBLE:
@@ -493,13 +496,20 @@ def correct_conjugated(
         bool: Returns True if a conjugated system was corrected
     """
 
-    final_bond_dirs = bond_dirs_by_mapnum(outcome)
+    if not initial_bond_dirs:
+        return False
+
     conjugated: List[Tuple[int, int]] = []
     for b in outcome.GetBonds():
         if b.GetIsConjugated():
             conjugated.append(
                 (b.GetBeginAtom().GetAtomMapNum(), b.GetEndAtom().GetAtomMapNum())
             )
+
+    if not conjugated:
+        return False
+
+    final_bond_dirs = bond_dirs_by_mapnum(outcome)
 
     # connectivity of conjugated systems
     # DFS may be better for large systems
@@ -525,6 +535,9 @@ def correct_conjugated(
                 inverted_dirs.append(pair)
         else:
             new_dirs.append(pair)
+
+    if not inverted_dirs:
+        return False
 
     isolated_conjugated_need_fix = [False] * len(isolated_conjugated)
     for i, conj in enumerate(isolated_conjugated):

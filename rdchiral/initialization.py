@@ -174,9 +174,10 @@ class rdchiralReactants(object):
         # Pre-list chiral double bonds (for copying back into outcomes/matching)
         self.bond_dirs_by_mapnum: Dict[Tuple[int, int], BondDir] = {}
         for i, j, b in self.bonds_by_mapnum:
-            if b.GetBondDir() != BondDir.NONE:
-                self.bond_dirs_by_mapnum[(i, j)] = b.GetBondDir()
-                self.bond_dirs_by_mapnum[(j, i)] = BondDirOpposite[b.GetBondDir()]
+            bond_dir = b.GetBondDir()
+            if bond_dir != BondDir.NONE:
+                self.bond_dirs_by_mapnum[(i, j)] = bond_dir
+                self.bond_dirs_by_mapnum[(j, i)] = BondDirOpposite[bond_dir]
 
         # Get atoms across double bonds defined by mapnum
         self.atoms_across_double_bonds: List[
