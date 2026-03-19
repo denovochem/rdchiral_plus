@@ -25,7 +25,7 @@ def canonicalize_outcome_smiles(smiles: str, ensure: bool = True) -> str:
     if ensure:
         outcome = Chem.MolFromSmiles(smiles)
         if outcome is None:
-            return None
+            raise ValueError(f"Invalid SMILES: {smiles}")
 
         smiles = Chem.MolToSmiles(outcome, True)
 

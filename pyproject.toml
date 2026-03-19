@@ -1,25 +1,62 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "mypy", "rdkit"]
+requires = ["setuptools>=45", "wheel", "mypy"]
 build-backend = "setuptools.build_meta"
  
 [project]
-name = "rdchiral"
-version = "1.1.0"
+name = "rdchiral_mypyc"
+version = "0.1.0"
 description = "Wrapper for RDKit's RunReactants to improve stereochemistry handling"
 readme = "README.md"
-requires-python = ">=3.5"
+requires-python = ">=3.8"
+dependencies = [
+    "rdkit",
+]
 authors = [
-    {name = "Connor Coley", email = "ccoley@mit.edu"}
+    {name = "Connor Coley", email = "ccoley@mit.edu"},
+    {name = "Carson Britt", email = "carson.s.britt@gmail.com"}
+]
+maintainers = [
+    {name = "Carson Britt", email = "carson.s.britt@gmail.com"}
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
- 
+
 [project.urls]
-Homepage = "https://github.com/connorcoley/rdchiral/"
- 
+Homepage = "https://github.com/denovochem/rdchiral_mypyc/"
+Repository = "https://github.com/denovochem/rdchiral_mypyc/"
+Issues = "https://github.com/denovochem/rdchiral_mypyc/issues"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["rdchiral*"]
+
+[tool.cibuildwheel]
+build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
+skip = "pp* *-musllinux_*"
+before-build = "python -m pip install --upgrade pip && python -m pip install rdkit"
+
+[tool.cibuildwheel.environment]
+RDCHIRAL_USE_MYPYC = "1"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "jupyter>=1.1.1",
+    "mypy>=1.14.1",
+    "pytest>=8.3.5",
+    "ruff>=0.15.6",
+]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+markers = [
+    "slow: integration/performance-style tests",
+]

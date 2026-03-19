@@ -1,103 +1,42 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Everything ignored by default - files must be explicitly NOT ignored
+*
 
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# dotenv
-.env
-
-# virtualenv
-.venv
-venv/
-ENV/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-Untitled.ipynb
-.mypyhtml/
+!.github/
+!.github/workflows/
+!.github/workflows/ci.yml
+!.github/workflows/publish.yml
+!.gitignore
+!.gitattributes
+!LICENSE
+!README.md
+!mkdocs.yml
+!docs/
+!docs/index.md
+!docs/stylesheets/
+!docs/stylesheets/extra.css
+!pyproject.toml
+!rdchiral/
+!rdchiral/__init__.py
+!rdchiral/bonds.py
+!rdchiral/chiral.py
+!rdchiral/clean.py
+!rdchiral/initialization.py
+!rdchiral/logging_config.py
+!rdchiral/main.py
+!rdchiral/template_extractor.py
+!rdchiral/test/__init__.py
+!rdchiral/test/test_smiles_from_50k_uspto.txt
+!rdchiral/utils.py
+!setup.py
+!templates/
+!templates/Examine templates.ipynb
+!templates/README.md
+!templates/clean_and_extract_uspto.py
+!templates/example_template_extractions_bad.json
+!templates/example_template_extractions_good.json
+!tests/
+!tests/Test rdchiral notebook.ipynb  
+!tests/test_atom_mapping.py
+!tests/test_atom_mapping_cases.json
+!tests/test_rdchiral.py
+!tests/test_rdchiral_cases.json
