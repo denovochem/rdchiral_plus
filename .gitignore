@@ -6,19 +6,26 @@
 !.github/workflows/ci.yml
 !.github/workflows/publish.yml
 !.github/workflows/docs.yml
+
 !.gitignore
 !.gitattributes
-!scripts/
-!scripts/speed_benchmark_script.py
-!scripts/run_speed_benchmark_envs.py
 !LICENSE
 !README.md
 !mkdocs.yml
+!pyproject.toml
+!setup.py
+
+!scripts/
+!scripts/speed_benchmark_script.py
+!scripts/run_speed_benchmark_envs.py
+!scripts/zinc250k.txt
+!scripts/uspto_top_1k_templates.txt
+
 !docs/
 !docs/index.md
 !docs/stylesheets/
 !docs/stylesheets/extra.css
-!pyproject.toml
+
 !rdchiral/
 !rdchiral/__init__.py
 !rdchiral/bonds.py
@@ -31,13 +38,7 @@
 !rdchiral/test/__init__.py
 !rdchiral/test/test_smiles_from_50k_uspto.txt
 !rdchiral/utils.py
-!setup.py
-!templates/
-!templates/Examine templates.ipynb
-!templates/README.md
-!templates/clean_and_extract_uspto.py
-!templates/example_template_extractions_bad.json
-!templates/example_template_extractions_good.json
+
 !tests/
 !tests/Test rdchiral notebook.ipynb  
 !tests/test_atom_mapping.py

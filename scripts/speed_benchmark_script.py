@@ -1,5 +1,6 @@
 import argparse
 import importlib.util
+import os
 import sys
 import time
 from pathlib import Path
@@ -34,12 +35,11 @@ if not CPP_MODE:
     print("find_spec('rdchiral.main').origin:", spec.origin if spec else None)
     print("============================")
 
-TEMPLATES_PATH = Path(
-    "/home/csnbritt/projects/denovochem_projects/rdchiral_mypyc/most_common_templates.txt"
-)
-SMILES_PATH = Path(
-    "/home/csnbritt/projects/denovochem_projects/rdchiral_mypyc/SMILES.txt"
-)
+# Get repository root from environment variable (set by run_speed_benchmark_envs.py)
+repo_root = Path(os.environ.get("RDCHIRAL_REPO_ROOT", Path(__file__).resolve().parent))
+
+TEMPLATES_PATH = repo_root / "uspto_top_1k_templates.txt"
+SMILES_PATH = repo_root / "zinc250k.txt"
 
 # Optional knobs
 MAX_TEMPLATES = None

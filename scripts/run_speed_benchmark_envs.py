@@ -165,7 +165,12 @@ def _run_benchmark(
         local_benchmark = tmpdir / benchmark_path.name
         shutil.copy2(benchmark_path, local_benchmark)
         cmd = [str(python), str(local_benchmark)] + (extra_args or [])
-        _run(cmd, cwd=tmpdir)
+
+        # Pass repository root as environment variable
+        env = os.environ.copy()
+        env["RDCHIRAL_REPO_ROOT"] = str(repo_root) + "/scripts"
+
+        _run(cmd, cwd=tmpdir, env=env)
 
 
 def main() -> int:
@@ -202,8 +207,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    repo_root = Path(__file__).resolve().parent
-    benchmark_path = (repo_root / args.benchmark).resolve()
+    repo_root = Path(__file__).resolve().parent.parent
+    benchmark_path = (repo_root / "scripts" / args.benchmark).resolve()
     if not benchmark_path.exists():
         raise FileNotFoundError(f"Benchmark script not found: {benchmark_path}")
 
