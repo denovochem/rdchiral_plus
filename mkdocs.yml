@@ -1,7 +1,7 @@
-site_name: rdchiral_mypyc
+site_name: rdchiral_plus
 site_description: 
-repo_url: https://github.com/denovochem/rdchiral_mypyc
-repo_name: denovochem/rdchiral_mypyc
+repo_url: https://github.com/denovochem/rdchiral_plus
+repo_name: denovochem/rdchiral_plus
 
 theme:
   name: material
