@@ -19,12 +19,13 @@ BondDirOpposite = {
 
 
 class rdchiralReaction(object):
-    """Class to store everything that should be pre-computed for a reaction. This
+    """
+    Class to store everything that should be pre-computed for a reaction. This
     makes library application much faster, since we can pre-do a lot of work
     instead of doing it for every mol-template pair
 
     Attributes:
-        reaction_smarts (str): reaction SMARTS string
+        reaction_smarts (str): Reaction SMARTS string
         rxn (rdkit.Chem.rdChemReactions.ChemicalReaction): RDKit reaction object.
             Generated from `reaction_smarts` using `initialize_rxn_from_smarts`
         template_r: Reaction reactant template fragments
@@ -118,7 +119,8 @@ class rdchiralReaction(object):
 
 
 class rdchiralReactants(object):
-    """Class to store everything that should be pre-computed for a reactant mol
+    """
+    Class to store everything that should be pre-computed for a reactant mol
     so that library application is faster
 
     Attributes:
@@ -145,37 +147,57 @@ class rdchiralReactants(object):
         self.custom_mapping: bool = custom_reactant_mapping
 
         # Initialize into RDKit mol
-        self.reactants: Chem.Mol = _initialize_reactants_from_smiles(
-            reactant_smiles, custom_reactant_mapping
-        )
+        self.reactants: Chem.Mol = _initialize_reactants_from_smiles(reactant_smiles)
 
         # Set mapnum->atom dictionary
         # all reactant atoms must be mapped after initialization, so this is safe
 
         self.atoms_r: Dict[int, Chem.Atom] = {}
-        for atom in self.reactants.GetAtoms():
-            self.atoms_r[atom.GetAtomMapNum()] = atom
+        self._idx_to_map_num: Dict[int, int] = {}
+        has_tetra_stereo = False
+        n_atoms = self.reactants.GetNumAtoms()
+        n_bonds = self.reactants.GetNumBonds()
+        for idx in range(n_atoms):
+            atom = self.reactants.GetAtomWithIdx(idx)
+            if not self.custom_mapping:
+                atom.SetAtomMapNum(idx + 1)
+                map_num = idx + 1
+            else:
+                map_num = atom.GetAtomMapNum()
+
+            self.atoms_r[map_num] = atom
+            self._idx_to_map_num[idx] = map_num
+            if (
+                not has_tetra_stereo
+                and atom.GetChiralTag() != ChiralType.CHI_UNSPECIFIED
+            ):
+                has_tetra_stereo = True
 
         # Create copy of molecule without chiral information, used with
         # RDKit's naive runReactants
         self.reactants_achiral = Chem.Mol(self.reactants)
-        for a in self.reactants_achiral.GetAtoms():
-            a.SetChiralTag(ChiralType.CHI_UNSPECIFIED)
-        for b in self.reactants_achiral.GetBonds():
+        for idx in range(n_atoms):
+            self.reactants_achiral.GetAtomWithIdx(idx).SetChiralTag(
+                ChiralType.CHI_UNSPECIFIED
+            )
+        for idx in range(n_bonds):
+            b = self.reactants_achiral.GetBondWithIdx(idx)
             b.SetStereo(BondStereo.STEREONONE)
             b.SetBondDir(BondDir.NONE)
 
         # Pre-list reactant bonds (for stitching broken products)
-        self.bonds_by_mapnum: List[Tuple[int, int, Chem.Bond]] = [
-            (b.GetBeginAtom().GetAtomMapNum(), b.GetEndAtom().GetAtomMapNum(), b)
-            for b in self.reactants.GetBonds()
-        ]
-
-        # Pre-list chiral double bonds (for copying back into outcomes/matching)
+        self.bonds_by_mapnum: List[Tuple[int, int, Chem.Bond]] = []
         self.bond_dirs_by_mapnum: Dict[Tuple[int, int], BondDir] = {}
-        for i, j, b in self.bonds_by_mapnum:
+        has_doublebond_stereo = False
+        for bond_idx in range(n_bonds):
+            b = self.reactants.GetBondWithIdx(bond_idx)
+            i = b.GetBeginAtom().GetAtomMapNum()
+            j = b.GetEndAtom().GetAtomMapNum()
+            self.bonds_by_mapnum.append((i, j, b))
+
             bond_dir = b.GetBondDir()
             if bond_dir != BondDir.NONE:
+                has_doublebond_stereo = True
                 self.bond_dirs_by_mapnum[(i, j)] = bond_dir
                 self.bond_dirs_by_mapnum[(j, i)] = BondDirOpposite[bond_dir]
 
@@ -184,17 +206,11 @@ class rdchiralReactants(object):
             Tuple[Tuple[int, int, int, int], Tuple[BondDir, BondDir], bool]
         ] = get_atoms_across_double_bonds(self.reactants)
 
-        self.reactants_has_tetra_stereo: bool = _has_tetra_stereo(self.reactants)
-        self.reactants_has_doublebond_stereo: bool = _has_doublebond_stereo(
-            self.reactants
-        )
+        self.reactants_has_tetra_stereo = has_tetra_stereo
+        self.reactants_has_doublebond_stereo = has_doublebond_stereo
         self.reactants_is_chiral: bool = (
             self.reactants_has_tetra_stereo or self.reactants_has_doublebond_stereo
         )
-
-        self._idx_to_map_num: Dict[int, int] = {
-            a.GetIdx(): a.GetAtomMapNum() for a in self.reactants.GetAtoms()
-        }
 
     def idx_to_mapnum(self, idx: int) -> int:
         return self._idx_to_map_num[idx]
@@ -203,13 +219,14 @@ class rdchiralReactants(object):
 def initialize_rxn_from_smarts(
     reaction_smarts: str,
 ) -> rdChemReactions.ChemicalReaction:
-    """Initialize RDKit reaction object from SMARTS string
+    """
+    Initialize a reaction from a SMARTS string.
 
     Args:
-        reaction_smarts (str): Reaction SMARTS string
+        reaction_smarts (str): Reaction SMARTS string.
 
     Returns:
-        rdkit.Chem.rdChemReactions.ChemicalReaction: RDKit reaction object
+        rdChemReactions.ChemicalReaction: RDKit reaction object with validation applied.
     """
     # Initialize reaction
     rxn: rdChemReactions.ChemicalReaction = rdChemReactions.ReactionFromSmarts(
@@ -250,40 +267,34 @@ def initialize_rxn_from_smarts(
     return rxn
 
 
-def _initialize_reactants_from_smiles(
-    reactant_smiles: str, custom_reactant_mapping: bool
-) -> Chem.Mol:
-    """Initialize RDKit molecule from SMILES string
+def _initialize_reactants_from_smiles(reactant_smiles: str) -> Chem.Mol:
+    """
+    Initialize a reactant molecule from a SMILES string.
 
     Args:
-        reactant_smiles (str): Reactant SMILES string
+        reactant_smiles (str): Reactant SMILES string.
 
     Returns:
-        rdkit.Chem.rdchem.Mol: RDKit molecule
+        Chem.Mol: RDKit molecule with stereochemistry assigned and its property cache updated.
     """
     # Initialize reactants
     reactants: Chem.Mol = Chem.MolFromSmiles(reactant_smiles)
     Chem.AssignStereochemistry(reactants, flagPossibleStereoCenters=True)
     reactants.UpdatePropertyCache(strict=False)
-    # To have the product atoms match reactant atoms, we
-    # need to populate the map number field, since this field
-    # gets copied over during the reaction via reactant_atom_idx.
-    if not custom_reactant_mapping:
-        for i, a in enumerate(reactants.GetAtoms()):
-            a.SetAtomMapNum(i + 1)
     return reactants
 
 
 def _get_template_frags_from_rxn(
     rxn: rdChemReactions.ChemicalReaction,
 ) -> Tuple[Chem.Mol, Chem.Mol]:
-    """Get template fragments from RDKit reaction object
+    """
+    Get template fragments from RDKit reaction object
 
     Args:
-        rxn (rdkit.Chem.rdChemReactions.ChemicalReaction): RDKit reaction object
+        rxn (rdChemReactions.ChemicalReaction): RDKit reaction object
 
     Returns:
-        (rdkit.Chem.rdchem.Mol, rdkit.Chem.rdchem.Mol): tuple of fragment molecules
+        (Chem., Chem.): tuple of fragment molecules
     """
     # Copy reaction template so we can play around with map numbers
     reactants_vec: rdChemReactions.MOL_SPTR_VECT = rxn.GetReactants()
@@ -304,8 +315,26 @@ def _get_template_frags_from_rxn(
 
 
 def _has_tetra_stereo(mol: Chem.Mol) -> bool:
+    """
+    Check whether a molecule contains any tetrahedral stereochemistry annotations.
+
+    Args:
+        mol (Chem.Mol): RDKit molecule to inspect.
+
+    Returns:
+        bool: True if any atom has a chiral tag other than `CHI_UNSPECIFIED`, otherwise False.
+    """
     return any(a.GetChiralTag() != ChiralType.CHI_UNSPECIFIED for a in mol.GetAtoms())
 
 
 def _has_doublebond_stereo(mol: Chem.Mol) -> bool:
+    """
+    Check whether a molecule contains any directional bond annotations (commonly used for double-bond stereochemistry).
+
+    Args:
+        mol (Chem.Mol): RDKit molecule to inspect.
+
+    Returns:
+        bool: True if any bond has a non-NONE `BondDir` value, otherwise False.
+    """
     return any(b.GetBondDir() != BondDir.NONE for b in mol.GetBonds())

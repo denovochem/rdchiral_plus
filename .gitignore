@@ -1,6 +1,7 @@
 # Everything ignored by default - files must be explicitly NOT ignored
 *
 
+!.pre-commit-config.yaml
 !.github/
 !.github/workflows/
 !.github/workflows/ci.yml
@@ -23,6 +24,9 @@
 
 !docs/
 !docs/index.md
+!docs/contributing.md
+!docs/benchmarks.md
+!docs/consistency.md
 !docs/stylesheets/
 !docs/stylesheets/extra.css
 
@@ -45,3 +49,11 @@
 !tests/test_atom_mapping_cases.json
 !tests/test_rdchiral.py
 !tests/test_rdchiral_cases.json
+
+!examples/
+!examples/example_notebook.ipynb
+
+
+!.windsurf/
+!.windsurf/rules/
+!.windsurf/rules/docstring.md

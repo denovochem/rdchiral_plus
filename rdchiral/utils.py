@@ -7,7 +7,19 @@ from rdkit import Chem
 
 def parity4(data: List[int]) -> int:
     """
-    Thanks to http://www.dalkescientific.com/writings/diary/archive/2016/08/15/fragment_parity_calculation.html
+    Compute the parity (even/odd) of the permutation implied by ordering four values.
+
+    Args:
+        data (List[int]): A list of four integer values whose relative ordering defines a permutation.
+
+    Returns:
+        int: `0` for even parity and `1` for odd parity.
+
+    Note:
+        This is an unrolled, branch-based parity computation specialized to length-4 inputs.
+        It assumes `data` has length 4 and is intended for inputs with distinct values; ties
+        can lead to parity results that are not meaningful.
+        Based on: http://www.dalkescientific.com/writings/diary/archive/2016/08/15/fragment_parity_calculation.html
     """
     if data[0] < data[1]:
         if data[2] < data[3]:
@@ -82,14 +94,15 @@ def parity4(data: List[int]) -> int:
 
 
 def bond_to_label(bond: Chem.Bond) -> str:
-    """This function takes an RDKit bond and creates a label describing
-    the most important attributes
+    """
+    Create a canonical string label for an RDKit bond based on its endpoint atoms and bond SMARTS.
 
     Args:
-        bond (rdkit.Chem.rdchem.Bond): RDKit bond object
+        bond (Chem.Bond): RDKit bond object.
 
     Returns:
-        str: String representing most important attributes of bond
+        str: Canonical label encoding the two endpoint atoms (atomic number plus optional atom-map number)
+            and the bond SMARTS.
     """
 
     a1_label = str(bond.GetBeginAtom().GetAtomicNum())
@@ -104,14 +117,14 @@ def bond_to_label(bond: Chem.Bond) -> str:
 
 
 def atoms_are_different(atom1: Chem.Atom, atom2: Chem.Atom) -> bool:
-    """Compares two RDKit atoms based on basic properties
+    """Return True if two RDKit atoms differ by selected atomic or local-environment properties.
 
     Args:
-        atom1 (rdkit.Chem.rdchem.Atom): First atom to compare
-        atom2 (rdkit.Chem.rdchem.Atom): Second atom to compare
+        atom1 (Chem.Atom): First atom to compare.
+        atom2 (Chem.Atom): Second atom to compare.
 
     Returns:
-        bool: Whether the two atoms are different
+        bool: True if any checked property differs, otherwise False.
     """
 
     if atom1.GetSmarts() != atom2.GetSmarts():

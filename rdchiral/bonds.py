@@ -12,13 +12,22 @@ BondDirLabel = {BondDir.ENDUPRIGHT: "\\", BondDir.ENDDOWNRIGHT: "/"}
 
 
 def bond_dirs_by_mapnum(mol: Chem.Mol) -> Dict[Tuple[int, int], BondDir]:
-    """Determine BondDir for atom mapped atoms in an RDKit molecule
+    """
+    Return bond directions keyed by atom-map numbers for a mapped RDKit molecule.
 
     Args:
-        mol (rdkit.Chem.rdchem.Mol): RDKit molecule to determine BondDirs
+        mol (Chem.Mol): RDKit molecule whose bonds will be inspected.
 
     Returns:
-       dict: Mapping from (atom_map1, atom_map2) -> BondDir
+        Dict[Tuple[int, int], BondDir]: Mapping from `(mapnum1, mapnum2)` to the
+            bond direction for the bond from atom `mapnum1` to atom `mapnum2`.
+
+    Note:
+        Bonds with `BondDir.NONE` are ignored.
+        Bonds are also ignored if either endpoint atom has atom-map number 0
+        (i.e., is unmapped).
+        For each directed entry `(a, b) -> d`, an opposite-direction entry
+        `(b, a) -> BondDirOpposite[d]` is also added.
     """
     bond_dirs_by_mapnum: Dict[Tuple[int, int], BondDir] = {}
     for b in mol.GetBonds():
@@ -43,7 +52,8 @@ def enumerate_possible_cistrans_defs(
 ) -> Tuple[
     Dict[Tuple[int, int, int, int], Tuple[BondDir, BondDir]], Set[Tuple[int, int]]
 ]:
-    """This function is meant to take a reactant template and fully enumerate
+    """
+    This function is meant to take a reactant template and fully enumerate
     all the ways in which different double-bonds can have their cis/trans
     chirality specified. This is necessary because double-bond chirality cannot
     be specified using cis/trans (global properties), but must be done using
@@ -265,7 +275,8 @@ def enumerate_possible_cistrans_defs(
 def get_atoms_across_double_bonds(
     mol: Chem.Mol,
 ) -> List[Tuple[Tuple[int, int, int, int], Tuple[BondDir, BondDir], bool]]:
-    """This function takes a molecule and returns a list of cis/trans specifications
+    """
+    This function takes a molecule and returns a list of cis/trans specifications
     according to the following:
 
     (mapnums, dirs)
@@ -410,7 +421,8 @@ def get_atoms_across_double_bonds(
 def restore_bond_stereo_to_sp2_atom(
     a: Chem.Atom, bond_dirs_by_mapnum: Dict[Tuple[int, int], BondDir]
 ) -> bool:
-    """Copy over single-bond directions (ENDUPRIGHT, ENDDOWNRIGHT) to
+    """
+    Copy over single-bond directions (ENDUPRIGHT, ENDDOWNRIGHT) to
     the single bonds attached to some double-bonded atom, a
 
     In some cases, like C=C/O>>C=C/Br, we should assume that stereochem was
@@ -494,7 +506,8 @@ def restore_bond_stereo_to_sp2_atom(
 def correct_conjugated(
     initial_bond_dirs: Dict[Tuple[int, int], BondDir], outcome: Chem.Mol
 ) -> bool:
-    """Checks whether the copying over of single-bond directions (ENDUPRIGHT, ENDDOWNRIGHT) was
+    """
+    Checks whether the copying over of single-bond directions (ENDUPRIGHT, ENDDOWNRIGHT) was
     corrupted for a conjugated system, where parts of the directions were specified by the template
     and parts were copied from the reactants.
     Args:

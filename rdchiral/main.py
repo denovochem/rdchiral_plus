@@ -91,17 +91,30 @@ def rdchiralRunText(
     combine_enantiomers: bool = True,
     return_mapped: bool = False,
 ) -> List[str] | Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]:
-    """Run from SMARTS string and SMILES string. This is NOT recommended
-    for library application, since initialization is pretty slow. You should
-    separately initialize the template and molecules and call run()
+    """
+    Run a reaction by constructing `rdchiralReaction` and `rdchiralReactants` from text inputs.
 
     Args:
-        reaction_smarts (str): Reaction SMARTS string
-        reactant_smiles (str): Reactant SMILES string
-        **kwargs: passed through to `rdchiralRun`
+        reaction_smarts (str): Reaction SMARTS string used to initialize `rdchiralReaction`.
+        reactant_smiles (str): Reactant SMILES string used to initialize `rdchiralReactants`.
+        custom_reactant_mapping (bool): If True, assume the input reactants already contain
+            an atom-mapping that should be preserved/used.
+        keep_mapnums (bool): If True, preserve atom-map numbers in returned product SMILES.
+        combine_enantiomers (bool): If True, attempt to combine enantiomeric outcomes into
+            racemic outcomes.
+        return_mapped (bool): If True, also return per-outcome atom-mapped information.
 
     Returns:
-        list: List of outcomes from `rdchiralRun`
+        List[str] | Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]:
+            - If `return_mapped` is False: A list of product SMILES strings.
+            - If `return_mapped` is True: A tuple of `(outcomes, mapped_outcomes)` as
+              returned by `rdchiralRun`.
+
+    Note:
+        This helper is convenient for one-off use but is not recommended for batch/library
+        workflows because template/reactant initialization is relatively expensive. For
+        repeated application, construct `rdchiralReaction` and `rdchiralReactants` once and
+        call `rdchiralRun` directly.
     """
     rxn = rdchiralReaction(reaction_smarts)
     reactants = rdchiralReactants(reactant_smiles, custom_reactant_mapping)
@@ -115,28 +128,38 @@ def rdchiralRun(
     combine_enantiomers: bool = True,
     return_mapped: bool = False,
 ) -> Any:
-    """Run rdchiral reaction
-
-    NOTE: there is a fair amount of initialization (assigning stereochem), most
-    importantly assigning atom map numbers to the reactant atoms. It is
-    HIGHLY recommended to use the custom classes for initialization.
+    """
+    Apply a pre-initialized `rdchiralReaction` template to pre-initialized reactants.
 
     Args:
-        rxn (rdchiralReaction): (rdkit reaction + auxilliary information)
-        reactants (rdchiralReactants): (rdkit mol + auxilliary information)
-        keep_mapnums (bool): Whether to keep map numbers or not
-        combine_enantiomers (bool): Whether to combine enantiomers
-        return_mapped (bool): Whether to additionally return atom mapped SMILES strings
+        rxn (rdchiralReaction): Reaction template wrapper, including an RDKit reaction
+            object and precomputed stereochemistry/atom-map bookkeeping.
+        reactants (rdchiralReactants): Reactants wrapper, including an RDKit molecule
+            and stereochemistry/atom-map bookkeeping.
+        keep_mapnums (bool): If False, clear atom-map numbers from returned product
+            SMILES. If True, preserve map numbers; atoms that are unmapped in the
+            product may be assigned new map numbers (implementation-dependent).
+        combine_enantiomers (bool): If True, attempt to combine enantiomeric outcomes
+            into racemic outcomes.
+        return_mapped (bool): If True, also return per-outcome atom-mapped information.
 
     Returns:
-        (list, str (optional)): Returns list of outcomes. If `return_mapped` is True,
-            additionally return atom mapped SMILES strings
+        List[str] | Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]:
+            - If `return_mapped` is False: A list of product SMILES strings.
+            - If `return_mapped` is True: A tuple of `(outcomes, mapped_outcomes)`.
+              `outcomes` is the list of product SMILES strings. `mapped_outcomes` maps
+              each product SMILES string to `(mapped_smiles, atoms_changed)`, where
+              `mapped_smiles` is the mapped SMILES for that product and
+              `atoms_changed` is a tuple of atom-map numbers whose corresponding atoms
+              differ between reactants and products.
+
+    Note:
+        This function mutates `rxn` via `rxn.reset()` to restore template atom-map
+        numbers, and may mutate intermediate RDKit molecules produced by RDKit during
+        post-processing.
     """
-    # New: reset atom map numbers for templates in case they have been overwritten
-    # by previous uses of this template!
     rxn.reset()
 
-    ###############################################################################
     # Run naive RDKit on ACHIRAL version of molecules
     outcomes: Tuple[Tuple[Chem.Mol, ...], ...] = rxn.rxn.RunReactants(
         (reactants.reactants_achiral,)
@@ -186,15 +209,8 @@ def rdchiralRun(
                 else:
                     return [achiral_outcome_smiles]
 
-    ###############################################################################
-
-    ###############################################################################
-    # Initialize, now that there is at least one outcome
-
     final_outcomes = set()
     mapped_outcomes = {}
-
-    ###############################################################################
     for outcome in outcomes:
         smiles_new, mapped_info = handle_outcomes(
             outcome, reactants, rxn, keep_mapnums, return_mapped
@@ -206,11 +222,10 @@ def rdchiralRun(
 
         final_outcomes.add(smiles_new)
         mapped_outcomes[smiles_new] = mapped_info
-    ###############################################################################
-    # One last fix for consolidating multiple stereospecified products...
+
     if combine_enantiomers:
         final_outcomes = combine_enantiomers_into_racemic(final_outcomes)
-    ###############################################################################
+
     if return_mapped:
         return list(final_outcomes), mapped_outcomes
     else:
@@ -224,6 +239,44 @@ def handle_outcomes(
     keep_mapnums: bool,
     return_mapped: bool,
 ) -> Tuple[str, Tuple[Any, ...]] | Tuple[None, None]:
+    """
+    Post-process a single raw RDKit reaction outcome into a final product SMILES.
+
+    This function aligns/repairs atom-map numbers in the product(s), optionally merges
+    multi-product outcomes into a single intramolecular product, restores any bonds
+    missing from the reaction outcome, and fixes stereochemistry (tetrahedral and
+    double-bond) to be consistent with the input reactants and reaction template.
+
+    Args:
+        outcome (Tuple[Chem.Mol, ...]): One outcome from RDKit reaction application,
+            represented as a tuple of product molecules.
+        reactants (rdchiralReactants): Initialized reactants container, including
+            atom-map bookkeeping and stereo flags.
+        rxn (rdchiralReaction): Initialized reaction container, including reactant and
+            product templates and atom-map lookup tables.
+        keep_mapnums (bool): If False, clear all atom-map numbers from the final
+            product molecule before generating the returned SMILES.
+        return_mapped (bool): If True, also return a mapped SMILES for the final
+            product and the tuple of atom-map numbers that changed between reactants
+            and products.
+
+    Returns:
+        Tuple[str, Tuple[Any, ...]] | Tuple[None, None]:
+            - On success: A tuple of `(smiles_new, (mapped_outcome, atoms_changed))`.
+              `smiles_new` is a canonical isomeric SMILES for the final product.
+              If `return_mapped` is True, `mapped_outcome` is the mapped SMILES for the
+              final product and `atoms_changed` is a tuple of atom-map numbers whose
+              corresponding atoms differ between reactants and products; otherwise both
+              values are None.
+            - On failure: `(None, None)` if the outcome is rejected by chiral/stereo
+              validation, sanitization fails after connectivity repair, or SMILES
+              generation fails.
+
+    Note:
+        This function mutates the RDKit molecule(s) in `outcome` (e.g., atom-map
+        numbers, bond connectivity, and stereochemistry) as part of the repair and
+        standardization process.
+    """
     # We need to keep track of what map numbers correspond to which atoms
     # note: all reactant atoms must be mapped, so this is safe
     atoms_r = reactants.atoms_r
@@ -256,8 +309,6 @@ def handle_outcomes(
         merged_outcome, reactants, template_r, atoms_rt, atoms_p
     )
 
-    ###############################################################################
-
     # Now that we've fixed any bonds, connectivity is set. This is a good time
     # to update the property cache, since all that is left is fixing atom/bond
     # stereochemistry.
@@ -278,8 +329,6 @@ def handle_outcomes(
 
     if reactants.reactants_has_doublebond_stereo or rxn.template_has_doublebond_stereo:
         merged_outcome = fix_double_bond_stereochemistry(merged_outcome, reactants, rxn)
-
-    ###############################################################################
 
     if return_mapped:
         # Keep track of the reacting atoms for later use in grouping
@@ -307,10 +356,29 @@ def assign_outcome_atom_mapnums(
     reactants: rdchiralReactants,
     atoms_rt_map: Dict[int, Chem.Atom],
 ) -> Tuple[Tuple[Chem.Mol, ...], Dict[int, Chem.Atom], Dict[int, Chem.Atom]]:
-    ###############################################################################
-    # Look for new atoms in products that were not in
-    # reactants (e.g., LGs for a retro reaction)
+    """
+    Assign consistent atom-map numbers to all atoms in an outcome and build a reactant-template lookup keyed by those map numbers.
 
+    Args:
+        outcome (Tuple[Chem.Mol, ...]): Tuple of product molecules produced by template application. Atoms may have a
+            `react_atom_idx` property indicating the corresponding reactant atom index, and/or an `old_mapno` property
+            indicating the original reactant-template atom-map number.
+        reactants (rdchiralReactants): Reactant container providing an `idx_to_mapnum` mapping from reactant atom index
+            to the atom-map number used for the reactants.
+        atoms_rt_map (Dict[int, Chem.Atom]): Mapping from original reactant-template atom-map number (as referenced by
+            the `old_mapno` property) to the corresponding reactant-template atom.
+
+    Returns:
+        Tuple[Tuple[Chem.Mol, ...], Dict[int, Chem.Atom], Dict[int, Chem.Atom]]:
+            - First element: The (mutated) `outcome` tuple, with atom-map numbers assigned/filled in.
+            - Second element: Mapping from outcome atom-map number to the matched reactant-template atom.
+            - Third element: The (mutated) `atoms_rt_map` mapping that was passed in.
+
+    Note:
+        If an outcome atom has `react_atom_idx`, its map number is overwritten using `reactants.idx_to_mapnum`. Any atom
+        lacking a map number is assigned a new one starting at 900. This function also mutates reactant-template atoms in
+        `atoms_rt_map` by calling `SetAtomMapNum` when matching via `old_mapno`.
+    """
     idx_to_mapnum = reactants.idx_to_mapnum
 
     unmapped = 900
@@ -340,11 +408,26 @@ def assign_outcome_atom_mapnums(
 def assign_pt_mapnums(
     outcome: Chem.Mol, atoms_pt_map: Dict[int, Chem.Atom]
 ) -> Tuple[Dict[int, Chem.Atom], Dict[int, Chem.Atom], Dict[int, Chem.Atom]]:
-    ###############################################################################
+    """
+    Build product-template and product-atom lookup dicts keyed by atom-map number for a single reaction outcome.
 
-    ###############################################################################
-    # Figure out which atoms were matched in the templates
-    # atoms_pt and atoms_p will be outcome-specific.
+    Args:
+        outcome (Chem.Mol): Product molecule generated by applying the reaction template. Atoms in this molecule may
+            have an `old_mapno` property that references the original atom-map number in the product template.
+        atoms_pt_map (Dict[int, Chem.Atom]): Mapping from original product-template atom-map number to the
+            corresponding product-template atom.
+
+    Returns:
+        Tuple[Dict[int, Chem.Atom], Dict[int, Chem.Atom], Dict[int, Chem.Atom]]:
+            - First dict: Mapping from outcome atom-map number to the matched product-template atom, with the
+              template atom's atom-map number updated to the outcome atom-map number.
+            - Second dict: Mapping from outcome atom-map number to the corresponding atom in `outcome`.
+            - Third dict: The (mutated) `atoms_pt_map` mapping that was passed in.
+
+    Note:
+        This function mutates the `Chem.Atom` objects in `atoms_pt_map` by calling `SetAtomMapNum` on any
+        product-template atoms matched via the `old_mapno` property.
+    """
     atoms_pt = {}
     atoms_p = {}
     for a in outcome.GetAtoms():
@@ -365,10 +448,31 @@ def validate_chiral_match(
     reactants: rdchiralReactants,
     rxn: rdchiralReaction,
 ) -> bool:
-    # Make sure each atom matches
-    # note: this is a little weird because atom_chirality_matches takes three values,
-    #       -1 (both tetra but opposite), 0 (not a match), and +1 (both tetra and match)
-    #       and we only want to continue if they all equal -1 or all equal +1
+    """
+    Validate whether the chirality constraints in the matched reactants are consistent with the reaction template.
+
+    Args:
+        atoms_rt (Dict[int, Chem.Atom]): Mapping from atom-map number to the matched reactant-template atom.
+        atoms_r (Dict[int, Chem.Atom]): Mapping from atom-map number to the corresponding atom in the input reactants.
+        reactants (rdchiralReactants): Reactant container providing precomputed stereochemical features for the input
+            reactants (e.g., atoms across specified double bonds).
+        rxn (rdchiralReaction): Reaction/template container providing required reactant-template bond direction
+            definitions and index-to-map-number mappings.
+
+    Returns:
+        bool: True if the outcome should be skipped due to a stereochemical mismatch; False if the stereochemistry is
+            compatible.
+
+    Note:
+        Atom chirality is checked by requiring that all matched tetrahedral centers either match with the same sign
+        (all +1) or are all inverted (all -1) according to `atom_chirality_matches`. A return value of 2 from
+        `atom_chirality_matches` is treated as "no constraint" and ignored.
+
+        Double-bond directionality is checked for any matched 4-atom tuples in `reactants.atoms_across_double_bonds`.
+        A bond definition is considered compatible if it matches the template directions directly, matches after
+        applying `BondDirOpposite` to both directions (trans equivalence), or if the template specifies
+        `(BondDir.NONE, BondDir.NONE)` and the reactant stereochemistry was implicit.
+    """
     prev: int | None = None
     skip_outcome = False
     for i in atoms_rt:
@@ -418,14 +522,21 @@ def validate_chiral_match(
 
 
 def merge_outcomes_intramolecular(outcome: Tuple[Chem.Mol, ...]) -> Chem.Mol:
-    ###############################################################################
+    """
+    Merge a tuple of product molecules into a single product molecule for pseudo-intramolecular handling.
 
-    ###############################################################################
-    # Convert product(s) to single product so that all
-    # reactions can be treated as pseudo-intramolecular
-    # But! check for ring openings mistakenly split into multiple
-    # This can be diagnosed by duplicate map numbers (i.e., SMILES)
+    Args:
+        outcome (Tuple[Chem.Mol, ...]): Tuple of product molecules produced by applying a reaction.
 
+    Returns:
+        Chem.Mol: A single merged product molecule.
+
+    Note:
+        If the products contain duplicate atom-map numbers, this function performs a map-number-based merge
+        (intended to handle ring-opening cases that were mistakenly split into multiple fragments) and
+        copies bond type, stereo, and bond direction when adding missing bonds. Otherwise, it merges
+        products using `rdmolops.CombineMols`.
+    """
     mapnums = [
         a.GetAtomMapNum() for m in outcome for a in m.GetAtoms() if a.GetAtomMapNum()
     ]
@@ -473,12 +584,40 @@ def check_missing_bonds(
     atoms_rt: Dict[int, Chem.Atom],
     atoms_p: Dict[int, Chem.Atom],
 ) -> Tuple[Chem.Mol, Dict[int, Chem.Atom], bool]:
-    ###############################################################################
+    """
+    Re-add reactant bonds to the outcome when they were omitted by the template and would otherwise fragment the product.
 
-    ###############################################################################
-    # Check for missing bonds. These are bonds that are present in the reactants,
-    # not specified in the reactant template, and not in the product. Accidental
-    # fragmentation can occur for intramolecular ring openings
+    This function identifies bonds that are present in the original reactants and
+    connect two mapped atoms that also appear in the product, but for which the
+    current `outcome` lacks a bond between the corresponding product atoms. Such a
+    bond is considered "missing" only if it was also not specified in the reactant
+    template (`template_r`), which indicates the bond was not intentionally broken
+    by the reaction definition.
+
+    Args:
+        outcome (Chem.Mol): Current product molecule to inspect and potentially
+            modify.
+        reactants (rdchiralReactants): Reactants container providing the original
+            reactant bonds keyed by atom-map number.
+        template_r (Chem.Mol): Reactant template molecule used to determine
+            whether a bond was intentionally specified (and thus potentially
+            intentionally broken).
+        atoms_rt (Dict[int, Chem.Atom]): Mapping from atom-map number to the
+            corresponding atom in the reactant template.
+        atoms_p (Dict[int, Chem.Atom]): Mapping from atom-map number to the
+            corresponding atom in the product `outcome`.
+
+    Returns:
+        Tuple[Chem.Mol, Dict[int, Chem.Atom], bool]:
+            - Chem.Mol: The (possibly modified) outcome molecule.
+            - Dict[int, Chem.Atom]: Updated mapping of atom-map number to atoms in
+              the returned outcome molecule.
+            - bool: True if one or more missing bonds were added, otherwise False.
+
+    Note:
+        When adding a missing bond, this function copies bond type, bond
+        direction, and aromaticity from the corresponding reactant bond.
+    """
     missing_bonds = []
     for i, j, b in reactants.bonds_by_mapnum:
         if i in atoms_p and j in atoms_p:
@@ -526,8 +665,32 @@ def fix_tetra_stereo(
     atoms_r: Dict[int, Chem.Atom],
     atoms_pt: Dict[int, Chem.Atom],
 ) -> Tuple[Chem.Mol, List[Chem.Atom]]:
-    ###############################################################################
-    # Correct tetra chirality in the outcome
+    """
+    Correct tetrahedral chirality annotations in a merged outcome molecule.
+
+    For each atom in `outcome`, this function determines whether tetrahedral
+    chirality should be copied from the original reactants, left unspecified, or
+    taken from the product template. For atoms in the reaction core where both
+    reactant and product templates could encode tetrahedral stereochemistry, the
+    outcome chirality is preserved or inverted based on whether the templates
+    indicate retention or inversion.
+
+    Args:
+        outcome (Chem.Mol): Product molecule to modify in-place.
+        atoms_rt (Dict[int, Chem.Atom]): Reactant-template atoms keyed by atom-map
+            number.
+        atoms_r (Dict[int, Chem.Atom]): Original reactant atoms keyed by atom-map
+            number.
+        atoms_pt (Dict[int, Chem.Atom]): Product-template atoms keyed by atom-map
+            number.
+
+    Returns:
+        Tuple[Chem.Mol, List[Chem.Atom]]:
+            - Chem.Mol: The same `outcome` molecule instance after tetrahedral
+              chirality updates.
+            - List[Chem.Atom]: Atoms in `outcome` whose tetrahedral chirality was
+              copied from the reactants (used for later validation).
+    """
     tetra_copied_from_reactants = []
     for a in outcome.GetAtoms():
         # Participants in reaction core (from reactants) will have old_mapno
@@ -595,13 +758,19 @@ def fix_tetra_stereo(
 def validate_tetra_not_destroyed(
     outcome: Chem.Mol, tetra_copied_from_reactants: List[Chem.Atom]
 ) -> bool:
+    """
+    Check whether any tetrahedral stereocenter copied from the reactants became unspecified in the product.
 
-    # Now, check to see if we have destroyed chirality
-    # this occurs when chirality was not actually possible (e.g., due to
-    # symmetry) but we had assigned a tetrahedral center originating
-    # from the reactants.
-    #    ex: SMILES C(=O)1C[C@H](Cl)CCC1
-    #        SMARTS [C:1]-[C;H0;D3;+0:2](-[C:3])=[O;H0;D1;+0]>>[C:1]-[CH2;D2;+0:2]-[C:3]
+    Args:
+        outcome (Chem.Mol): Product molecule to validate after applying the reaction/template.
+        tetra_copied_from_reactants (List[Chem.Atom]): Atoms in `outcome` whose tetrahedral chirality was
+            copied/propagated from the reactants.
+
+    Returns:
+        bool: True if stereochemistry assignment indicates at least one copied tetrahedral center has
+            `CHI_UNSPECIFIED` in `outcome` (i.e., chirality was effectively destroyed or was not actually
+            possible); otherwise False.
+    """
     if len(tetra_copied_from_reactants) > 0:
         Chem.AssignStereochemistry(outcome, cleanIt=True, force=True)
         for a in tetra_copied_from_reactants:
@@ -611,6 +780,16 @@ def validate_tetra_not_destroyed(
 
 
 def sanitize_mol(merged_outcome: Chem.Mol) -> Chem.Mol | None:
+    """
+    Sanitize a merged outcome molecule using RDKit and return `None` on sanitization failure.
+
+    Args:
+        merged_outcome (Chem.Mol): The molecule to sanitize in-place.
+
+    Returns:
+        Chem.Mol | None: The same `merged_outcome` instance after successful sanitization and
+            property-cache update, or `None` if RDKit sanitization raises a `ValueError`.
+    """
     try:
         Chem.SanitizeMol(merged_outcome)
         merged_outcome.UpdatePropertyCache()
@@ -622,10 +801,37 @@ def sanitize_mol(merged_outcome: Chem.Mol) -> Chem.Mol | None:
 def fix_double_bond_stereochemistry(
     outcome: Chem.Mol, reactants: rdchiralReactants, rxn: rdchiralReaction
 ) -> Chem.Mol:
-    ###############################################################################
+    """
+    Restore or preserve double-bond stereochemistry in a predicted product molecule.
 
-    ###############################################################################
-    # Correct bond directionality in the outcome
+    This function iterates over non-ring double bonds in `outcome` and attempts to
+    ensure that bond-direction annotations needed for E/Z specification are
+    consistent with the input `reactants` and the reaction template constraints in
+    `rxn`. When a double bond was carried over from the reactants but lost bond
+    directionality during reaction application/merging, bond directions are
+    restored on the adjacent atoms when possible. If the bond stereochemistry is
+    fully specified by the reaction templates (or the bond was created entirely by
+    the product template), it is left unchanged.
+
+    Args:
+        outcome (Chem.Mol): Product molecule whose double-bond stereo annotations
+            may need to be corrected.
+        reactants (rdchiralReactants): Reactant container providing original bond
+            directionality keyed by atom-map number.
+        rxn (rdchiralReaction): Reaction template information, including required
+            bond definitions on core atoms.
+
+    Returns:
+        Chem.Mol: The (potentially modified) `outcome` molecule with updated bond
+            directionality and conjugation state.
+
+    Note:
+        This function mutates and returns the same `outcome` instance.
+        Ring double bonds and terminal double bonds (degree 1 at either end) are
+        skipped. After attempting to restore bond directions, conjugation is
+        re-perceived and conjugated systems are corrected using the initial bond
+        directions captured at the start of the function.
+    """
     initial_bond_dirs = bond_dirs_by_mapnum(outcome)
     for b in outcome.GetBonds():
         if b.GetBondType() != BondType.DOUBLE:

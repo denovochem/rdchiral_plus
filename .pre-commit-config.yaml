@@ -1,0 +1,42 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        types_or: [python, pyi]
+      - id: ruff-format
+        args: [--check]
+        types_or: [python, pyi]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: python
+        additional_dependencies:
+          - mypy
+          - types-setuptools
+        args: [
+          ".",
+          "--ignore-missing-imports",
+          "--explicit-package-bases",
+        ]
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+  
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: python
+        additional_dependencies:
+          - pytest
+          - "loguru~=0.7.0"
+          - "rdkit>=2025.9.3"
+          - .
+        pass_filenames: false
+        types: [python]
+        stages: [pre-push]

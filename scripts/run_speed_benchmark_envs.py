@@ -1,5 +1,6 @@
 import argparse
 import os
+import random
 import shutil
 import subprocess
 import tempfile
@@ -132,7 +133,7 @@ def _build_env(
     # `uv` is typically installed globally, not inside the venv.
     # Use `--python` to ensure the install targets this venv.
     _run(
-        ["uv", "pip", "install", "--python", str(venv_python), ".", "--verbose"],
+        ["uv", "pip", "install", "--python", str(venv_python), "."],
         env=env,
         cwd=repo_root,
     )
@@ -205,6 +206,12 @@ def main() -> int:
         action="store_true",
         help="Delete and recreate venvs before installing",
     )
+    parser.add_argument(
+        "--shuffle-seed",
+        type=int,
+        default=None,
+        help="Randomize the order of environment benchmarks (optionally reproducible with a seed)",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -217,55 +224,69 @@ def main() -> int:
     venv_default = (repo_root / args.venv_default).resolve()
     venv_cpp = (repo_root / args.venv_cpp).resolve()
 
-    print("=== Building pure-Python environment ===")
-    _build_env(
-        repo_root=repo_root, venv_dir=venv_py, use_mypyc=False, reinstall=args.reinstall
-    )
-    py_python = _venv_python(venv_py)
-    print("--- Import verification (pure python) ---")
-    _verify_import(python=py_python)
-    print("--- Running benchmark (pure python) ---")
-    _run_benchmark(python=py_python, repo_root=repo_root, benchmark_path=benchmark_path)
+    def _env_pure_python() -> None:
+        print("=== Building pure-Python environment ===")
+        _build_env(
+            repo_root=repo_root,
+            venv_dir=venv_py,
+            use_mypyc=False,
+            reinstall=args.reinstall,
+        )
+        py_python = _venv_python(venv_py)
+        print("--- Import verification (pure python) ---")
+        _verify_import(python=py_python)
+        print("--- Running benchmark (pure python) ---")
+        _run_benchmark(
+            python=py_python, repo_root=repo_root, benchmark_path=benchmark_path
+        )
 
-    print("\n=== Building mypyc environment ===")
-    _build_env(
-        repo_root=repo_root,
-        venv_dir=venv_mypyc,
-        use_mypyc=True,
-        reinstall=args.reinstall,
-    )
-    mypyc_python = _venv_python(venv_mypyc)
-    print("--- Import verification (mypyc) ---")
-    _verify_import(python=mypyc_python)
-    print("--- Running benchmark (mypyc) ---")
-    _run_benchmark(
-        python=mypyc_python, repo_root=repo_root, benchmark_path=benchmark_path
-    )
+    def _env_mypyc() -> None:
+        print("\n=== Building mypyc environment ===")
+        _build_env(
+            repo_root=repo_root,
+            venv_dir=venv_mypyc,
+            use_mypyc=True,
+            reinstall=args.reinstall,
+        )
+        mypyc_python = _venv_python(venv_mypyc)
+        print("--- Import verification (mypyc) ---")
+        _verify_import(python=mypyc_python)
+        print("--- Running benchmark (mypyc) ---")
+        _run_benchmark(
+            python=mypyc_python, repo_root=repo_root, benchmark_path=benchmark_path
+        )
 
-    print("\n=== Building original rdchiral environment ===\n")
-    _build_env_from_url(
-        install_spec="git+https://github.com/connorcoley/rdchiral.git",
-        venv_dir=venv_default,
-        reinstall=args.reinstall,
-    )
-    default_python = _venv_python(venv_default)
-    print("--- Import verification (original rdchiral) ---")
-    _verify_import(python=default_python)
-    print("--- Running benchmark (original rdchiral) ---")
-    _run_benchmark(
-        python=default_python, repo_root=repo_root, benchmark_path=benchmark_path
-    )
+    def _env_original() -> None:
+        print("\n=== Building original rdchiral environment ===\n")
+        _build_env_from_url(
+            install_spec="git+https://github.com/connorcoley/rdchiral.git",
+            venv_dir=venv_default,
+            reinstall=args.reinstall,
+        )
+        default_python = _venv_python(venv_default)
+        print("--- Import verification (original rdchiral) ---")
+        _verify_import(python=default_python)
+        print("--- Running benchmark (original rdchiral) ---")
+        _run_benchmark(
+            python=default_python, repo_root=repo_root, benchmark_path=benchmark_path
+        )
 
-    print("\n=== Building rdchiral_cpp environment ===\n")
-    _build_conda_env(env_dir=venv_cpp, reinstall=args.reinstall)
-    cpp_python = _conda_python(venv_cpp)
-    print("--- Running benchmark (rdchiral_cpp) ---")
-    _run_benchmark(
-        python=cpp_python,
-        repo_root=repo_root,
-        benchmark_path=benchmark_path,
-        extra_args=["--cpp"],
-    )
+    def _env_cpp() -> None:
+        print("\n=== Building rdchiral_cpp environment ===\n")
+        _build_conda_env(env_dir=venv_cpp, reinstall=args.reinstall)
+        cpp_python = _conda_python(venv_cpp)
+        print("--- Running benchmark (rdchiral_cpp) ---")
+        _run_benchmark(
+            python=cpp_python,
+            repo_root=repo_root,
+            benchmark_path=benchmark_path,
+            extra_args=["--cpp"],
+        )
+
+    env_steps = [_env_pure_python, _env_mypyc, _env_original, _env_cpp]
+    random.Random(args.shuffle_seed).shuffle(env_steps)
+    for step in env_steps:
+        step()
 
     return 0
 

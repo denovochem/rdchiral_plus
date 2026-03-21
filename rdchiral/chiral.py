@@ -12,9 +12,10 @@ from rdchiral.utils import parity4
 def template_atom_could_have_been_tetra(
     a: Chem.Atom, strip_if_spec: bool = False, cache: bool = True
 ) -> bool:
-    """Could this atom have been a tetrahedral center?
+    """
+    Could this atom have been a tetrahedral center?
     If yes, template atom is considered achiral and will not match a chiral rct
-    If no, the tempalte atom is auxilliary and we should not use it to remove
+    If no, the template atom is auxiliary and we should not use it to remove
     a matched reaction. For example, a fully-generalized terminal [C:1]
 
     Args:
@@ -40,15 +41,15 @@ def template_atom_could_have_been_tetra(
 
 
 def copy_chirality(a_src: Chem.Atom, a_new: Chem.Atom) -> None:
-    """Copy chirality from a_src to a_new
+    """
+    Copy tetrahedral chirality from one atom to another, inverting if required.
 
     Args:
-        a_src (rdkit.Chem.rdchem.Atom): Source RDKit atom
-        a_new (rdkit.Chem.rdchem.Atom): RDKit atom to have chirality changed
+        a_src (rdkit.Chem.rdchem.Atom): Source RDKit atom whose chiral tag will be copied.
+        a_new (rdkit.Chem.rdchem.Atom): Destination RDKit atom to receive the chiral tag.
 
     Returns:
-        None
-
+        None: This function mutates `a_new` in place.
     """
     # Not possible to be a tetrahedral center anymore?
     if a_new.GetDegree() < 3:
