@@ -25,7 +25,7 @@ plugins:
 
 nav:
   - Quick Start: index.md
-  - Benchmarks: benchmark.md
+  - Benchmarks: benchmarks.md
   - Consistency: consistency.md
   - API Reference: reference.md
 
