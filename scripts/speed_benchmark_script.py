@@ -77,7 +77,7 @@ reactants_list = []
 bad_smiles = 0
 for smi in smiles_list:
     try:
-        reactants_list.append([rdchiralReactants(smi, lazy_init=True), smi])
+        reactants_list.append([rdchiralReactants(smi), smi])
     except Exception:
         bad_smiles += 1
 t1 = time.perf_counter()
@@ -88,7 +88,7 @@ rxn_list = []
 template_init_fail = 0
 for smarts in templates:
     try:
-        rxn_list.append([rdchiralReaction(smarts, lazy_init=True), smarts])
+        rxn_list.append([rdchiralReaction(smarts), smarts])
     except Exception:
         template_init_fail += 1
 t3 = time.perf_counter()

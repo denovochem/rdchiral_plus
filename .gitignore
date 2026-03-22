@@ -40,21 +40,21 @@
 !rdchiral/logging_config.py
 !rdchiral/main.py
 !rdchiral/template_extractor.py
-!rdchiral/test/__init__.py
-!rdchiral/test/test_smiles_from_50k_uspto.txt
 !rdchiral/utils.py
 
 !tests/
-!tests/Test rdchiral notebook.ipynb  
-!tests/test_atom_mapping.py
-!tests/test_atom_mapping_cases.json
-!tests/test_rdchiral.py
-!tests/test_rdchiral_cases.json
+!tests/unit/
+!tests/unit/test_chiral.py
+!tests/unit/test_clean.py
+!tests/unit/test_utils.py
+!tests/unit/test_bonds.py
+!tests/unit/test_main.py
+!tests/unit/test_initialization.py
+!tests/integration/
+!tests/integration/test_atom_mapping.py
+!tests/integration/test_rdchiral.py
+!tests/integration/test_atom_mapping_cases.json
+!tests/integration/test_rdchiral_cases.json
 
 !examples/
 !examples/example_notebook.ipynb
-
-
-!.windsurf/
-!.windsurf/rules/
-!.windsurf/rules/docstring.md
