@@ -151,26 +151,30 @@ class rdchiralReaction(object):
 
     @property
     def template_r_orig(self) -> Chem.Mol:
-        self._ensure_templates()
-        assert self._template_r_orig is not None
+        if self._template_r_orig is None:
+            self._ensure_templates()
+            assert self._template_r_orig is not None
         return self._template_r_orig
 
     @property
     def template_p_orig(self) -> Chem.Mol:
-        self._ensure_templates()
-        assert self._template_p_orig is not None
+        if self._template_p_orig is None:
+            self._ensure_templates()
+            assert self._template_p_orig is not None
         return self._template_p_orig
 
     @property
     def template_r(self) -> Chem.Mol:
-        self._ensure_templates()
-        assert self._template_r is not None
+        if self._template_r is None:
+            self._ensure_templates()
+            assert self._template_r is not None
         return self._template_r
 
     @property
     def template_p(self) -> Chem.Mol:
-        self._ensure_templates()
-        assert self._template_p is not None
+        if self._template_p is None:
+            self._ensure_templates()
+            assert self._template_p is not None
         return self._template_p
 
     @property
@@ -305,7 +309,8 @@ class rdchiralReaction(object):
 
     def reset(self) -> None:
         """Reset atom map numbers for template fragment atoms"""
-        self._ensure_templates()
+        if not self._template_r or not self._template_p:
+            self._ensure_templates()
         self._template_r = self._template_r_orig
         self._template_p = self._template_p_orig
 
