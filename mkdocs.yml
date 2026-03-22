@@ -25,6 +25,8 @@ plugins:
 
 nav:
   - Quick Start: index.md
+  - Benchmarks: benchmark.md
+  - Consistency: consistency.md
   - API Reference: reference.md
 
 markdown_extensions:

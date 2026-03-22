@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "mypy"]
+requires = ["setuptools>=45", "wheel", "mypy>=1.14,<2", "rdkit", "numpy"]
 build-backend = "setuptools.build_meta"
  
 [project]
@@ -7,7 +7,7 @@ name = "rdchiral_plus"
 version = "0.1.0"
 description = "Wrapper for RDKit's RunReactants to improve stereochemistry handling"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "rdkit",
 ]
@@ -34,9 +34,8 @@ where = ["."]
 include = ["rdchiral*"]
 
 [tool.cibuildwheel]
-build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
-skip = "pp* *-musllinux_*"
-before-build = "python -m pip install --upgrade pip && python -m pip install rdkit"
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "pp* *-musllinux_* *-win32 *_i686"
 
 [tool.cibuildwheel.environment]
 RDCHIRAL_USE_MYPYC = "1"

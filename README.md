@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/pypi/l/rdchiral)](https://github.com/denovochem/rdchiral_plus/blob/main/LICENSE)
 [![Run Tests](https://github.com/denovochem/rdchiral_plus/actions/workflows/ci.yml/badge.svg)](https://github.com/denovochem/rdchiral_plus/actions/workflows/ci.yml)
 [![Build Docs](https://github.com/denovochem/cholla_chem/actions/workflows/docs.yml/badge.svg)](https://github.com/denovochem/cholla_chem/actions/workflows/docs.yml)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/denovochem/rdchiral_mypyc/blob/main/examples/example_notebook.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/denovochem/rdchiral_plus/blob/main/examples/example_notebook.ipynb)
 
 # rdchiral_plus
 Wrapper for RDKit's RunReactants to improve stereochemistry handling
