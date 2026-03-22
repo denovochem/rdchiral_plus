@@ -1,7 +1,16 @@
 import os
+import shutil
+import sys
 import warnings
 
 from setuptools import setup
+
+# Remove buggy rdkit-stubs that ship with rdkit and cause mypyc build
+# failures due to syntax errors in their .pyi files.
+for _path in sys.path:
+    _stubs = os.path.join(_path, "rdkit-stubs")
+    if os.path.isdir(_stubs):
+        shutil.rmtree(_stubs, ignore_errors=True)
 
 # Try to use mypyc compilation
 ext_modules = []
