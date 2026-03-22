@@ -96,17 +96,6 @@ print(
     f"Initialized templates in {t3 - t2:.3f}s (template_init_fail={template_init_fail})"
 )
 
-
-# t4 = time.perf_counter()
-# for smarts in templates:
-#     for smi in smiles_list:
-#         try:
-#             rdchiralRunText(smarts, smi)
-#         except Exception:
-#             pass
-# t5 = time.perf_counter()
-# print(f"Pre-run complete in {t5 - t4:.3f}s")
-
 # Main timing loop: pre-initialize each template once, then run on all reactants
 total_runs = 0
 total_outcomes = 0
@@ -114,15 +103,29 @@ run_fail = 0
 
 
 randomized_order_list = []
-for i, [rdchiral_rxn, _] in enumerate(rxn_list, start=1):
-    for rdchiral_reactants, _ in reactants_list:
-        randomized_order_list.append([rdchiral_rxn, rdchiral_reactants])
+for i, [rdchiral_rxn, rxn_smarts] in enumerate(rxn_list, start=1):
+    for rdchiral_reactants, reactant_smi in reactants_list:
+        randomized_order_list.append(
+            ((rdchiral_rxn, rdchiral_reactants), (rxn_smarts, reactant_smi))
+        )
 random.shuffle(randomized_order_list)
+
+
+t4 = time.perf_counter()
+for i, [_, (rxn_smarts, reactant_smi)] in enumerate(randomized_order_list, start=1):
+    try:
+        rdchiralRunText(rxn_smarts, reactant_smi)
+    except Exception:
+        pass
+t5 = time.perf_counter()
+print(f"Pre-run complete in {t5 - t4:.3f}s")
 
 
 t_start = time.perf_counter()
 
-for i, [rdchiral_rxn, rdchiral_reactants] in enumerate(randomized_order_list, start=1):
+for i, [(rdchiral_rxn, rdchiral_reactants), _] in enumerate(
+    randomized_order_list, start=1
+):
     try:
         outcomes = rdchiralRun(rdchiral_rxn, rdchiral_reactants)
         total_outcomes += len(outcomes)

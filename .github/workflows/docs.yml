@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install mkdocs mkdocstrings[python] mkdocs-material
-          pip install -e .  # Install your package (if you have setup.py/pyproject.toml)
+          RDCHIRAL_USE_MYPYC=0 pip install -e .  # Install pure-Python package for docs introspection
       
       - name: Deploy docs
         run: mkdocs gh-deploy --force
