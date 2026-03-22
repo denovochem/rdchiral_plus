@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from rdchiral.initialization import rdchiralReactants, rdchiralReaction
-from rdchiral.main import rdchiralRun, rdchiralRunText
+from rdchiral.main import rdchiralRun
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument(
@@ -97,15 +97,15 @@ print(
 )
 
 
-t4 = time.perf_counter()
-for smarts in templates:
-    for smi in smiles_list:
-        try:
-            rdchiralRunText(smarts, smi)
-        except Exception:
-            pass
-t5 = time.perf_counter()
-print(f"Pre-run complete in {t5 - t4:.3f}s")
+# t4 = time.perf_counter()
+# for smarts in templates:
+#     for smi in smiles_list:
+#         try:
+#             rdchiralRunText(smarts, smi)
+#         except Exception:
+#             pass
+# t5 = time.perf_counter()
+# print(f"Pre-run complete in {t5 - t4:.3f}s")
 
 # Main timing loop: pre-initialize each template once, then run on all reactants
 total_runs = 0
