@@ -183,6 +183,7 @@ def rdchiralRun(
                     for a in achiral_outcome.GetAtoms():
                         a.SetAtomMapNum(0)
                 else:
+                    mapped_outcome = Chem.Mol(achiral_outcome)
                     unmapped = 900
                     for a in achiral_outcome.GetAtoms():
                         if a.GetAtomMapNum() == 0:
@@ -191,7 +192,7 @@ def rdchiralRun(
                 achiral_outcome_smiles = Chem.MolToSmiles(achiral_outcome)
 
                 if return_mapped:
-                    return [achiral_outcome_smiles], {}
+                    return [achiral_outcome_smiles], {mapped_outcome: tuple([])}
                 else:
                     return [achiral_outcome_smiles]
 

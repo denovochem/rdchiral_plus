@@ -37,7 +37,7 @@ def test_bond_to_label_is_canonical_wrt_endpoint_order():
 
 
 def test_bond_to_label_includes_bond_smarts_and_atom_map_numbers_when_present():
-    m = Chem.MolFromSmiles("[CH3:12]=[CH2:3]")
+    m = Chem.MolFromSmiles("[CH2:12]=[CH2:3]")
     assert m is not None
 
     bond = m.GetBondBetweenAtoms(0, 1)

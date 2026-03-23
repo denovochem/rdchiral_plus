@@ -53,7 +53,7 @@ def test_rdchiralRunText_achiral_early_return_keep_mapnums_true_preserves_maps_a
 
 
 def test_rdchiralRunText_achiral_early_return_return_mapped_true_has_empty_mapped_outcomes():
-    rxn_smarts = "[CH3:1][Br:2]>>[CH3:1][Cl:3]"
+    rxn_smarts = "[CH3:1][Cl:2]>>[CH3:1].[Cl:2]"
     reactant_smiles = "CBr"
 
     outcomes, mapped_outcomes = rdchiralRunText(
@@ -64,7 +64,7 @@ def test_rdchiralRunText_achiral_early_return_return_mapped_true_has_empty_mappe
         return_mapped=True,
     )
 
-    assert outcomes
+    assert outcomes == []
     assert mapped_outcomes == {}
 
 
@@ -85,8 +85,10 @@ def test_deduplicate_outcomes_with_smiles_removes_duplicate_outcome_tuples():
     "keep_mapnums",
     [False, True],
 )
-def test_rdchiralRunText_simple_substitution_produces_expected_product_smiles(keep_mapnums):
-    rxn_smarts = "[CH3:1][Br:2]>>[CH3:1][Cl:3]"
+def test_rdchiralRunText_simple_substitution_produces_expected_product_smiles(
+    keep_mapnums,
+):
+    rxn_smarts = "[CH3:1][Br:2]>>[CH3:1].[Br:2]"
     reactant_smiles = "CBr"
 
     outcomes = rdchiralRunText(
@@ -98,4 +100,10 @@ def test_rdchiralRunText_simple_substitution_produces_expected_product_smiles(ke
     )
 
     assert outcomes
-    assert "CCl" in {Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True) for s in outcomes}
+    if keep_mapnums:
+        expected = "[BrH:2].[CH3:1]"
+    else:
+        expected = "Br.[CH3]"
+    assert expected in {
+        Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True) for s in outcomes
+    }

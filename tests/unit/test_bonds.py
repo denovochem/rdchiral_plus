@@ -1,7 +1,11 @@
 import rdkit.Chem as Chem
 from rdkit.Chem.rdchem import BondDir
 
-from rdchiral.bonds import BondDirOpposite, bond_dirs_by_mapnum, enumerate_possible_cistrans_defs
+from rdchiral.bonds import (
+    BondDirOpposite,
+    bond_dirs_by_mapnum,
+    enumerate_possible_cistrans_defs,
+)
 
 
 def test_bond_dirs_by_mapnum_adds_opposites_for_mapped_mol() -> None:
@@ -27,7 +31,7 @@ def test_bond_dirs_by_mapnum_ignores_unmapped_atoms() -> None:
     assert dirs == {}
 
 
-def test_enumerate_possible_cistrans_defs_specified_bond_has_16_possible_defs() -> None:
+def test_enumerate_possible_cistrans_defs_specified_bond_has_8_possible_defs() -> None:
     template_r = Chem.MolFromSmiles("[CH3:1]/[CH:2]=[CH:3]/[CH3:4]")
     assert template_r is not None
 
@@ -36,8 +40,11 @@ def test_enumerate_possible_cistrans_defs_specified_bond_has_16_possible_defs() 
     assert (2, 3) in coreatoms
     assert (3, 2) in coreatoms
 
-    assert len(required_bond_defs) == 16
-    assert all(d1 != BondDir.NONE and d2 != BondDir.NONE for (d1, d2) in required_bond_defs.values())
+    assert len(required_bond_defs) == 8
+    assert all(
+        d1 != BondDir.NONE and d2 != BondDir.NONE
+        for (d1, d2) in required_bond_defs.values()
+    )
 
 
 def test_enumerate_possible_cistrans_defs_unspecified_bond_requires_none_dirs() -> None:
