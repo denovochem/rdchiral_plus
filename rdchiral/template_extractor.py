@@ -661,7 +661,7 @@ def get_fragments_for_changed_atoms(
         if INCLUDE_ALL_UNMAPPED_REACTANT_ATOMS and len(atoms_to_use) > 0:
             if category == "reactants":
                 for atom in mol.GetAtoms():
-                    if not atom.HasProp("molAtomMapNumber"):
+                    if not atom.GetAtomMapNum():
                         atoms_to_use.append(atom.GetIdx())
 
         # Check neighbors (any atom)
@@ -689,7 +689,7 @@ def get_fragments_for_changed_atoms(
 
             # Make sure unmapped atoms are included (from products)
             for atom in mol.GetAtoms():
-                if not atom.HasProp("molAtomMapNumber"):
+                if not atom.GetAtomMapNum():
                     atoms_to_use.append(atom.GetIdx())
                     symbol = get_strict_smarts_for_atom(atom)
                     symbol_replacements.append((atom.GetIdx(), symbol))

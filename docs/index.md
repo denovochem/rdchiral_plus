@@ -6,7 +6,7 @@ This repository is a fork of [rdchiral](https://github.com/connorcoley/rdchiral)
 ## Requirements
 
 * RDKit (version >= 2019)
-* Python (version >= 3.9)
+* Python (version >= 10)
 
 ## Installation
 
