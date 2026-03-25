@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 import rdkit.Chem as Chem
 from rdkit.Chem.rdchem import BondDir, BondType
@@ -334,7 +334,7 @@ def get_atoms_across_double_bonds(
         bab = None
         bbb = None
 
-        def _bab_generator():
+        def _bab_generator() -> Iterator[Chem.Bond]:
             for z in ba.GetBonds():
                 if z.GetBondType() != BondType.DOUBLE:
                     yield z
@@ -348,7 +348,7 @@ def get_atoms_across_double_bonds(
                 front_dir = bab.GetBondDir()
                 break
 
-        def _bbb_generator():
+        def _bbb_generator() -> Iterator[Chem.Bond]:
             for z in bb.GetBonds():
                 if z.GetBondType() != BondType.DOUBLE:
                     yield z

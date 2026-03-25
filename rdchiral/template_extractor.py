@@ -200,7 +200,7 @@ def get_tetrahedral_atoms(
                 continue
             if ar.GetChiralTag() == ChiralType.CHI_UNSPECIFIED:
                 continue
-            atom_tag = atom_map_num
+            atom_tag = str(atom_map_num)
             reactant_atom_tags[atom_tag] = ar
 
     product_atom_tags: Dict[str, Chem.Atom] = {}
@@ -211,7 +211,7 @@ def get_tetrahedral_atoms(
                 continue
             if ap.GetChiralTag() == ChiralType.CHI_UNSPECIFIED:
                 continue
-            atom_tag = atom_map_num
+            atom_tag = str(atom_map_num)
             product_atom_tags[atom_tag] = ap
 
     for atom_tag, ar in reactant_atom_tags.items():
@@ -252,6 +252,8 @@ def check_tetrahedral_centers_equivalent(atom1: Chem.Atom, atom2: Chem.Atom) -> 
     )
     atom2_idx = atom2.GetIdx()
     atom1_neighborhood = Chem.MolFromSmiles(atom1_frag, sanitize=False)
+    if atom1_neighborhood is None:
+        return False
     for matched_ids in atom2.GetOwningMol().GetSubstructMatches(
         atom1_neighborhood, useChirality=True
     ):
@@ -334,12 +336,12 @@ def get_changed_atoms(
                 # a random specifidation (must be CONNECTED to a changed atom)
                 tetra_adj_to_rxn = False
                 for neighbor in ap.GetNeighbors():
-                    neighbor_map_num = neighbor.GetProp("molAtomMapNumber")
+                    neighbor_map_num = str(neighbor.GetAtomMapNum())
                     if neighbor_map_num in changed_atom_tags:
                         tetra_adj_to_rxn = True
                         break
                 if tetra_adj_to_rxn:
-                    changed_atom_tags.append(atom_tag)
+                    changed_atom_tags.append(str(atom_tag))
                     changed_atoms.append(ar)
 
     return changed_atoms, changed_atom_tags, err
@@ -358,6 +360,8 @@ def get_special_groups(mol: Chem.Mol) -> List[Tuple[List[int], List[int]]]:
     # Build list
     groups: List[Tuple[List[int], List[int]]] = []
     for add_if_match, template_mol in _SPECIAL_GROUP_TEMPLATES:
+        if template_mol is None:
+            continue
         matches = mol.GetSubstructMatches(template_mol, useChirality=True)
         for match in matches:
             add_if: List[int] = []
@@ -698,10 +702,12 @@ def get_fragments_for_changed_atoms(
         for i, symbol in symbol_replacements:
             symbols[i] = symbol
 
+        mol_smi_with_maps = Chem.MolToSmiles(mol, True)
+        mol_from_smi_with_maps = Chem.MolFromSmiles(mol_smi_with_maps)
+        if mol_from_smi_with_maps is None:
+            raise ValueError("could not parse molecule SMILES")
         mols_changed.append(
-            Chem.MolToSmiles(
-                clear_mapnum(Chem.MolFromSmiles(Chem.MolToSmiles(mol, True))), True
-            )
+            Chem.MolToSmiles(clear_mapnum(mol_from_smi_with_maps), True)
         )
 
         # Keep flipping stereocenters until we are happy...
@@ -726,6 +732,8 @@ def get_fragments_for_changed_atoms(
             # Figure out what atom maps are tetrahedral centers
             # Set isotopes to make sure we're getting the *exact* match we want
             this_fragment_mol = rdmolfiles.MolFromSmarts(this_fragment)
+            if this_fragment_mol is None:
+                raise ValueError("could not parse fragment SMARTS")
             tetra_map_nums = []
             for atom in this_fragment_mol.GetAtoms():
                 atom_map_num = atom.GetAtomMapNum()
@@ -987,9 +995,11 @@ def extract_from_reaction(
     retro_canonical = products_string + ">>" + reactants_string
 
     # Load into RDKit
-    rxn: rdChemReactions.ChemicalReaction = rdChemReactions.ReactionFromSmarts(
-        retro_canonical
+    rxn: Optional[rdChemReactions.ChemicalReaction] = (
+        rdChemReactions.ReactionFromSmarts(retro_canonical)
     )
+    if rxn is None:
+        return {"reaction_id": reaction["_id"]}
     if rxn.Validate()[1] != 0:
         return {"reaction_id": reaction["_id"]}
 

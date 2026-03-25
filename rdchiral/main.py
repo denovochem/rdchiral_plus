@@ -90,7 +90,7 @@ def rdchiralRunText(
     keep_mapnums: bool = False,
     combine_enantiomers: bool = True,
     return_mapped: bool = False,
-) -> Union[List[str], Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]]:
+) -> Any:
     """
     Run a reaction by constructing `rdchiralReaction` and `rdchiralReactants` from text inputs.
 

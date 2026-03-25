@@ -28,7 +28,9 @@ def template_atom_could_have_been_tetra(
     """
 
     if a.HasProp("tetra_possible"):
-        return a.GetBoolProp("tetra_possible")
+        if a.GetBoolProp("tetra_possible"):
+            return True
+        return False
     if a.GetDegree() < 3 or (a.GetDegree() == 3 and "H" not in a.GetSmarts()):
         if cache:
             a.SetBoolProp("tetra_possible", False)
