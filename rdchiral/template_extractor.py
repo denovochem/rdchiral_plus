@@ -897,9 +897,7 @@ def extract_from_reaction(
             if map_num and map_num in seen_atom_map_nums:
                 reactants_in_reaction.append(reactant)
                 break
-    spectators = [
-        reactant for reactant in reactants if reactant not in reactants_in_reaction
-    ]
+    _ = [reactant for reactant in reactants if reactant not in reactants_in_reaction]
     reactants = reactants_in_reaction
     if not reactants:
         return {"reaction_id": reaction["_id"]}
