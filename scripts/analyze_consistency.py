@@ -14,6 +14,8 @@ _SUFFIXES: Tuple[str, ...] = (
     "_rdchiralExtract",
     "_rdchiralRun",
     "_rdchiralRunText",
+    "_rdchiralRun_return_mapped",
+    "_rdchiralRun_return_mapped_keep_mapnums",
 )
 
 
@@ -46,6 +48,7 @@ def _load_outcome_series(csv_path: Path) -> pd.Series:
         skip_blank_lines=False,
         keep_default_na=False,
         na_filter=False,
+        delimiter="\t",
     )
     if "outcome" not in df.columns:
         raise KeyError(f"Missing 'outcome' column in {csv_path.name}")

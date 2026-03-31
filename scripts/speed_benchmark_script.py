@@ -40,6 +40,7 @@ from rdchiral.main import rdchiralRun, rdchiralRunText  # noqa: E402
 from rdchiral.template_extractor import extract_from_reaction  # noqa: E402
 
 RANDOM_SEED = 42
+RANDOM_REACTANT_MAP_SEED = 4242
 MAX_TEMPLATES = None
 MAX_SMILES_INITIALIZATION_TEST = 10000
 MAX_SMILES_PRE_INITIALIZED = 1000
@@ -79,6 +80,8 @@ def write_timing_file(
     eager_reactant_init_time_s: float,
     run_rdchiralruntext_time_s: float,
     run_rdchiralrun_time_s: float,
+    run_rdchiralrun_return_mapped_time_s: float,
+    run_rdchiralrun_return_mapped_keep_mapnums_time_s: float,
     run_rdchiralextract_time_s: float,
 ) -> None:
     with timing_path.open("w", encoding="utf-8") as timing_fh:
@@ -98,6 +101,12 @@ def write_timing_file(
         )
         timing_fh.write(f"run_rdchiralruntext\t{run_rdchiralruntext_time_s:.6f}\n")
         timing_fh.write(f"run_rdchiralrun\t{run_rdchiralrun_time_s:.6f}\n")
+        timing_fh.write(
+            f"run_rdchiralrun_return_mapped\t{run_rdchiralrun_return_mapped_time_s:.6f}\n"
+        )
+        timing_fh.write(
+            f"run_rdchiralrun_return_mapped_keep_mapnums\t{run_rdchiralrun_return_mapped_keep_mapnums_time_s:.6f}\n"
+        )
         timing_fh.write(f"run_rdchiralextract\t{run_rdchiralextract_time_s:.6f}\n")
 
 
@@ -137,6 +146,39 @@ def initialize_reactants(
     return reactants_list, reactants_init_fail
 
 
+def _randomize_reactant_atom_mapnums(smiles: str, rng: random.Random) -> str:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"Invalid SMILES: {smiles!r}")
+
+    mapnums = list(range(1, mol.GetNumAtoms() + 1))
+    rng.shuffle(mapnums)
+    for atom, mapnum in zip(mol.GetAtoms(), mapnums):
+        atom.SetAtomMapNum(mapnum)
+
+    return Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+
+
+def initialize_reactants_random_mapped(
+    smiles_list: List[str], seed: int
+) -> Tuple[List[Tuple[rdchiralReactants, str]], int]:
+    reactants_list = []
+    reactants_init_fail = 0
+    rng = random.Random(seed)
+    for smi in smiles_list:
+        try:
+            mapped_smi = _randomize_reactant_atom_mapnums(smi, rng)
+            reactants_list.append(
+                (
+                    rdchiralReactants(mapped_smi, custom_reactant_mapping=True),
+                    mapped_smi,
+                )
+            )
+        except Exception:
+            reactants_init_fail += 1
+    return reactants_list, reactants_init_fail
+
+
 def shuffle_reactants_templates_order(
     rxn_list: List[Tuple[rdchiralReaction, str]],
     reactants_list: List[Tuple[rdchiralReactants, str]],
@@ -161,6 +203,70 @@ def run_rdchiralruntext(
         try:
             outcome = rdchiralRunText(rxn_smarts, reactant_smi)
             outcomes.append(outcome)
+        except Exception:
+            outcomes.append(None)
+    return outcomes
+
+
+def run_rdchiralrun_return_mapped_keep_mapnums(
+    randomized_order_list: List[
+        Tuple[Tuple[rdchiralReaction, rdchiralReactants], Tuple[str, str]]
+    ],
+):
+    outcomes = []
+    for _, [(rdchiral_reactants, rdchiral_rxn), (_, _)] in enumerate(
+        randomized_order_list, start=1
+    ):
+        try:
+            outcome, mapped_outcomes = rdchiralRun(
+                rdchiral_rxn,
+                rdchiral_reactants,
+                keep_mapnums=True,
+                return_mapped=True,
+            )
+            outcomes.append((outcome, mapped_outcomes))
+        except Exception:
+            outcomes.append(None)
+    return outcomes
+
+
+def _serialize_rdchiralrun_return_mapped(outcomes, mapped_outcomes) -> str:
+    serialized_outcomes = []
+    for outcome_smiles in sorted(outcomes):
+        mapped_info = mapped_outcomes.get(outcome_smiles)
+        if mapped_info is None:
+            continue
+        mapped_smiles, atoms_changed = mapped_info
+        if atoms_changed is None:
+            atoms_changed_str = ""
+        else:
+            atoms_changed_str = ",".join(str(x) for x in atoms_changed)
+        serialized_outcomes.append(
+            "::".join(
+                [
+                    outcome_smiles,
+                    "" if mapped_smiles is None else mapped_smiles,
+                    atoms_changed_str,
+                ]
+            )
+        )
+    return "|".join(serialized_outcomes)
+
+
+def run_rdchiralrun_return_mapped(
+    randomized_order_list: List[
+        Tuple[Tuple[rdchiralReaction, rdchiralReactants], Tuple[str, str]]
+    ],
+):
+    outcomes = []
+    for _, [(rdchiral_reactants, rdchiral_rxn), (_, _)] in enumerate(
+        randomized_order_list, start=1
+    ):
+        try:
+            outcome, mapped_outcomes = rdchiralRun(
+                rdchiral_rxn, rdchiral_reactants, return_mapped=True
+            )
+            outcomes.append((outcome, mapped_outcomes))
         except Exception:
             outcomes.append(None)
     return outcomes
@@ -409,6 +515,77 @@ write_outcomes_file(
 print(f"run_rdchiralrun time: {t_end - t_start:.3f} seconds")
 
 
+print("====rdchiralRun (return_mapped=True)====")
+rdchiral_templates, template_init_fail = initialize_templates(
+    templates, lazy_init=False
+)
+rdchiral_reactants, smiles_init_fail = initialize_reactants(
+    smiles_list_pre_initialized, lazy_init=False
+)
+
+shuffled_smiles_list_pre_initialized = shuffle_reactants_templates_order(
+    rdchiral_reactants, rdchiral_templates
+)
+t_start = time.perf_counter()
+outcomes = run_rdchiralrun_return_mapped(shuffled_smiles_list_pre_initialized)
+t_end = time.perf_counter()
+run_rdchiralrun_return_mapped_time_s = t_end - t_start
+outcomes_serialized = []
+for ele in outcomes:
+    if ele is None:
+        outcomes_serialized.append([""])
+        continue
+    outcome, mapped_outcomes = ele
+    outcomes_serialized.append(
+        [_serialize_rdchiralrun_return_mapped(outcome, mapped_outcomes)]
+    )
+write_outcomes_file(
+    SAVE_FILE_PATH / (SAVE_FILE_PREFIX + "_rdchiralRun_return_mapped.csv"),
+    ["outcome"],
+    outcomes_serialized,
+)
+print(f"run_rdchiralrun (return_mapped=True) time: {t_end - t_start:.3f} seconds")
+
+
+print(
+    "====rdchiralRun (return_mapped=True, keep_mapnums=True, seeded reactant maps)===="
+)
+rdchiral_templates, template_init_fail = initialize_templates(
+    templates, lazy_init=False
+)
+rdchiral_reactants, smiles_init_fail = initialize_reactants_random_mapped(
+    smiles_list_pre_initialized, seed=RANDOM_REACTANT_MAP_SEED
+)
+
+shuffled_smiles_list_pre_initialized = shuffle_reactants_templates_order(
+    rdchiral_reactants, rdchiral_templates
+)
+t_start = time.perf_counter()
+outcomes = run_rdchiralrun_return_mapped_keep_mapnums(
+    shuffled_smiles_list_pre_initialized
+)
+t_end = time.perf_counter()
+run_rdchiralrun_return_mapped_keep_mapnums_time_s = t_end - t_start
+outcomes_serialized = []
+for ele in outcomes:
+    if ele is None:
+        outcomes_serialized.append([""])
+        continue
+    outcome, mapped_outcomes = ele
+    outcomes_serialized.append(
+        [_serialize_rdchiralrun_return_mapped(outcome, mapped_outcomes)]
+    )
+write_outcomes_file(
+    SAVE_FILE_PATH / (SAVE_FILE_PREFIX + "_rdchiralRun_return_mapped_keep_mapnums.csv"),
+    ["outcome"],
+    outcomes_serialized,
+)
+print(
+    "run_rdchiralrun (return_mapped=True, keep_mapnums=True) time: "
+    f"{t_end - t_start:.3f} seconds"
+)
+
+
 print("====rdchiralExtract====")
 t_start = time.perf_counter()
 outcomes = run_rdchiralextract(mapped_reactions_list)
@@ -433,5 +610,7 @@ write_timing_file(
     eager_reactant_init_time_s=eager_reactant_init_time_s,
     run_rdchiralruntext_time_s=run_rdchiralruntext_time_s,
     run_rdchiralrun_time_s=run_rdchiralrun_time_s,
+    run_rdchiralrun_return_mapped_time_s=run_rdchiralrun_return_mapped_time_s,
+    run_rdchiralrun_return_mapped_keep_mapnums_time_s=run_rdchiralrun_return_mapped_keep_mapnums_time_s,
     run_rdchiralextract_time_s=run_rdchiralextract_time_s,
 )
