@@ -367,9 +367,9 @@ outcomes = run_rdchiralruntext(shuffled_smiles_list_not_pre_initialized)
 t_end = time.perf_counter()
 run_rdchiralruntext_time_s = t_end - t_start
 outcomes_smiles = [
-    "|".join(sorted([Chem.MolToSmiles(Chem.MolFromSmiles(s)) for s in outcome]))
+    ["|".join(sorted([Chem.MolToSmiles(Chem.MolFromSmiles(s)) for s in outcome]))]
     if outcome
-    else ""
+    else [""]
     for outcome in outcomes
 ]
 write_outcomes_file(
@@ -396,9 +396,9 @@ outcomes = run_rdchiralrun(shuffled_smiles_list_pre_initialized)
 t_end = time.perf_counter()
 run_rdchiralrun_time_s = t_end - t_start
 outcomes_smiles = [
-    "|".join(sorted([Chem.MolToSmiles(Chem.MolFromSmiles(s)) for s in outcome]))
+    ["|".join(sorted([Chem.MolToSmiles(Chem.MolFromSmiles(s)) for s in outcome]))]
     if outcome
-    else ""
+    else [""]
     for outcome in outcomes
 ]
 write_outcomes_file(
