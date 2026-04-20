@@ -236,6 +236,12 @@ def rdchiralStep(
             final_outcomes
         )
 
+        mapped_outcomes = fix_return_mapped_dict_enantiomers(
+            all_products=mapped_outcomes,
+            modified_smiles_dict=modified_smiles_dict,
+            keep_mapnums=keep_mapnums,
+        )
+
     if return_mapped:
         return list(final_outcomes), mapped_outcomes
     else:
@@ -377,16 +383,11 @@ def rdchiralRun(
         )
         final_smiles_list = list(final_smiles_set)
 
-        ## This isnt right
-        # for mapped, (unmapped, changes) in all_products.items():
-        #     if keep_mapnums:
-        #         if mapped in modified_smiles_dict:
-        #             all_products[modified_smiles_dict[mapped]] = (modified_smiles_dict[mapped], changes)
-        #             del all_products[mapped]
-        #     else:
-        #         if unmapped in modified_smiles_dict:
-        #             all_products[modified_smiles_dict[unmapped]] = (modified_smiles_dict[unmapped], changes)
-        #             del all_products[unmapped]
+    all_products = fix_return_mapped_dict_enantiomers(
+        all_products=all_products,
+        modified_smiles_dict=modified_smiles_dict,
+        keep_mapnums=keep_mapnums,
+    )
 
     if return_mapped:
         if not keep_mapnums:
@@ -404,6 +405,42 @@ def rdchiralRun(
 
     else:
         return final_smiles_list
+
+
+def fix_return_mapped_dict_enantiomers(
+    all_products: Dict[str, Tuple[str, Tuple[Tuple[int, int, str], ...]]],
+    modified_smiles_dict: Dict[str, str],
+    keep_mapnums: bool,
+) -> Dict[str, Tuple[str, Tuple[Tuple[int, int, str], ...]]]:
+    ## Fix the return_mapped dictionary to account for combination of enantiomers into racemics
+    keys_to_delete = []
+    keys_to_add = []
+    for mapped, (unmapped, changes) in all_products.items():
+        if keep_mapnums:
+            if mapped in modified_smiles_dict:
+                keys_to_add.append(
+                    (
+                        modified_smiles_dict[mapped],
+                        (modified_smiles_dict[mapped], changes),
+                    )
+                )
+                keys_to_delete.append(mapped)
+        else:
+            if unmapped in modified_smiles_dict:
+                keys_to_add.append(
+                    (
+                        modified_smiles_dict[unmapped],
+                        (modified_smiles_dict[unmapped], changes),
+                    )
+                )
+                keys_to_delete.append(mapped)
+
+    for key in keys_to_delete:
+        del all_products[key]
+    for key, value in keys_to_add:
+        all_products[key] = value
+
+    return all_products
 
 
 def deduplicate_outcomes_with_smiles(

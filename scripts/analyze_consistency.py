@@ -64,7 +64,6 @@ def _canon_outcome_series(outcome: pd.Series) -> pd.Series:
 
     def _canon_one(smarts: str) -> str:
         try:
-            stop
             return canon_reaction_smarts(smarts)
         except Exception:
             return smarts

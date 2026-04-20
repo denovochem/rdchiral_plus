@@ -5,6 +5,11 @@ import pytest
 
 from rdchiral.template_extractor import extract_from_reaction
 
+try:
+    from rdcanon import canon_reaction_smarts
+except ImportError:  # pragma: no cover
+    canon_reaction_smarts = None
+
 
 def _load_extraction_cases():
     with open(
@@ -35,4 +40,10 @@ _EXTRACTION_CASES = _load_extraction_cases()
 )
 def test_template_extraction_case(test_case):
     extracted = extract_from_reaction(dict(test_case))["reaction_smarts"]
-    assert extracted == test_case["expected_template"]
+
+    if canon_reaction_smarts is not None:
+        extracted = canon_reaction_smarts(extracted)
+        canon_test = canon_reaction_smarts(test_case["expected_template"])
+        assert extracted == canon_test
+    else:
+        assert extracted == test_case["expected_template"]

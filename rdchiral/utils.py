@@ -121,19 +121,32 @@ def bond_to_label(bond: Chem.Bond) -> str:
     return "{}{}{}".format(atoms[0], Chem.Bond.GetSmarts(bond), atoms[1])
 
 
-def atoms_are_different(atom1: Chem.Atom, atom2: Chem.Atom) -> bool:
+def atoms_are_different(
+    atom1: Chem.Atom, atom2: Chem.Atom, skip_smarts_check: bool = False
+) -> bool:
     """Return True if two RDKit atoms differ by selected atomic or local-environment properties.
 
     Args:
         atom1 (Chem.Atom): First atom to compare.
         atom2 (Chem.Atom): Second atom to compare.
+        skip_smarts_check (bool): Whether to skip the SMARTS check. Can be false positive for changed atoms, as the SMARTS
+            @ vs @@ may change based on atom ordering in the SMILES. Defaults to False.
 
     Returns:
         bool: True if any checked property differs, otherwise False.
     """
 
-    if atom1.GetSmarts() != atom2.GetSmarts():
-        return True  # should be very general
+    if not skip_smarts_check:
+        if atom1.GetSmarts() != atom2.GetSmarts():
+            return True  # should be very general
+
+    # if atom1.HasProp("_CIPCode") and atom2.HasProp("_CIPCode"):
+    #     if atom1.GetProp("_CIPCode") != atom2.GetProp("_CIPCode"):
+    #         return True
+
+    # if atom1.GetChiralTag() != atom2.GetChiralTag():
+    #     return True
+
     if atom1.GetAtomicNum() != atom2.GetAtomicNum():
         return True  # must be true for atom mapping
     if atom1.GetTotalNumHs() != atom2.GetTotalNumHs():
