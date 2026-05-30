@@ -5,6 +5,7 @@ from rdkit import RDLogger
 from rdchiral.initialization import rdchiralReactants, rdchiralReaction
 from rdchiral.main import rdchiralRun, rdchiralRunText
 from rdchiral.template_extractor import (
+    DEFAULT_EXTRACTED_TEMPLATE,
     extract_from_reaction,
     extract_from_reaction_smiles,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "rdchiralReactants",
     "extract_from_reaction",
     "extract_from_reaction_smiles",
+    "DEFAULT_EXTRACTED_TEMPLATE",
 ]
 
 try:
