@@ -54,6 +54,7 @@
 !tests/unit/test_bonds.py
 !tests/unit/test_main.py
 !tests/unit/test_initialization.py
+!tests/unit/test_template_extractor.py
 !tests/integration/
 !tests/integration/test_atom_mapping.py
 !tests/integration/test_rdchiral.py

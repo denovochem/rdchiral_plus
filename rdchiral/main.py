@@ -458,6 +458,9 @@ def rdchiralRun(
 
         current_level = next_level
 
+        if num_products >= max_products:
+            break
+
     if not keep_mapnums:
         final_smiles_list = list(
             set([unmapped for unmapped, _ in all_products.values()])

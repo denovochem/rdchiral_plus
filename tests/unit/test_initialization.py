@@ -109,3 +109,72 @@ def test_rdchiralReactants_reactants_achiral_strips_tetrahedral_and_bond_directi
     assert all(
         b.GetStereo() == Chem.rdchem.BondStereo.STEREONONE for b in achiral.GetBonds()
     )
+
+
+def test_rdchiralReaction_reset_restores_original_atom_mapnums():
+    """After reset(), all template atoms should have their original map numbers."""
+    rxn_smarts = "[CH3:1][CH2:2][Br:3]>>[CH3:1][CH2:2][Cl:4]"
+    r = rdchiralReaction(rxn_smarts, lazy_init=True)
+
+    original_rt_mapnums = {
+        a.GetAtomMapNum() for a in r.template_r_orig.GetAtoms() if a.GetAtomMapNum()
+    }
+    original_pt_mapnums = {
+        a.GetAtomMapNum() for a in r.template_p_orig.GetAtoms() if a.GetAtomMapNum()
+    }
+
+    # Mutate template atoms' map numbers to simulate post-reaction state
+    first_rt_atom = next(iter(r.atoms_rt_map.values()))
+    first_rt_atom.SetAtomMapNum(999)
+    first_pt_atom = next(iter(r.atoms_pt_map.values()))
+    first_pt_atom.SetAtomMapNum(888)
+
+    r.reset()
+
+    reset_rt_mapnums = {
+        a.GetAtomMapNum() for a in r.template_r.GetAtoms() if a.GetAtomMapNum()
+    }
+    reset_pt_mapnums = {
+        a.GetAtomMapNum() for a in r.template_p.GetAtoms() if a.GetAtomMapNum()
+    }
+    assert reset_rt_mapnums == original_rt_mapnums
+    assert reset_pt_mapnums == original_pt_mapnums
+    assert 999 not in reset_rt_mapnums
+    assert 888 not in reset_pt_mapnums
+
+
+def test_rdchiralReaction_reset_is_in_place_not_copy():
+    """reset() should restore mapnums in-place, not create new Mol objects."""
+    rxn_smarts = "[CH3:1][CH2:2][Br:3]>>[CH3:1][CH2:2][Cl:4]"
+    r = rdchiralReaction(rxn_smarts, lazy_init=True)
+
+    template_r_before = r.template_r
+    template_p_before = r.template_p
+
+    r.reset()
+
+    # Same Mol objects — in-place restore, no copy
+    assert r.template_r is template_r_before
+    assert r.template_p is template_p_before
+
+
+def test_rdchiralReaction_reset_keeps_atoms_rt_map_valid():
+    """After reset(), atoms_rt_map keys should match the restored map numbers."""
+    rxn_smarts = "[CH3:1][CH2:2][Br:3]>>[CH3:1][CH2:2][Cl:4]"
+    r = rdchiralReaction(rxn_smarts, lazy_init=True)
+
+    original_keys = set(r.atoms_rt_map.keys())
+
+    # Mutate a template atom's map number
+    first_atom = next(iter(r.atoms_rt_map.values()))
+    first_atom.SetAtomMapNum(999)
+
+    r.reset()
+
+    # The dict is not rebuilt, but the atoms' mapnums are restored.
+    # The dict keys should still match the original map numbers.
+    assert set(r.atoms_rt_map.keys()) == original_keys
+
+    # Each atom in the dict should have its map number matching the key
+    for mapnum, atom in r.atoms_rt_map.items():
+        assert atom.GetAtomMapNum() == mapnum

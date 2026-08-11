@@ -331,16 +331,29 @@ class rdchiralReaction(object):
 
     def reset(self) -> None:
         """
-        Reset template fragment atom-map numbers to their original values.
+        Restore template fragment atom-map numbers to their original values.
 
-        Restores `template_r` and `template_p` to copies of `template_r_orig`
-        and `template_p_orig`, discarding any in-place atom-map modifications
-        made during template application.
+        Iterates over `template_r` and `template_p` atoms and resets each
+        atom's map number to the value recorded in `atoms_rt_idx_to_map` /
+        `atoms_pt_idx_to_map` during initialization. This is an in-place
+        operation — no molecular graph copy is made.
+
+        Note:
+            This method must be called between reaction applications when
+            reusing the same `rdchiralReaction` object, because
+            `assign_outcome_atom_mapnums` and `assign_pt_mapnums` mutate
+            template atom map numbers in-place.
         """
         if not self._template_r or not self._template_p:
             self._ensure_templates()
-        self._template_r = self._template_r_orig
-        self._template_p = self._template_p_orig
+        assert self._template_r is not None
+        assert self._template_p is not None
+        assert self._atoms_rt_idx_to_map is not None
+        assert self._atoms_pt_idx_to_map is not None
+        for a in self._template_r.GetAtoms():
+            a.SetAtomMapNum(self._atoms_rt_idx_to_map[a.GetIdx()])
+        for a in self._template_p.GetAtoms():
+            a.SetAtomMapNum(self._atoms_pt_idx_to_map[a.GetIdx()])
 
 
 class rdchiralReactants(object):

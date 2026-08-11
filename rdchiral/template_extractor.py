@@ -1632,6 +1632,12 @@ def extract_from_reaction(
         - The extracted reaction SMARTS fails RDKit validation
         The returned template uses retro-synthetic direction (products>>reactants).
     """
+    # Build a default template that preserves the reaction_id for early returns
+    default_template: ExtractedTemplate = {
+        **DEFAULT_EXTRACTED_TEMPLATE,
+        "reaction_id": reaction["_id"],
+    }
+
     reactants = mols_from_smiles_list(
         replace_deuterated(reaction["reactants"]).split(".")
     )
@@ -1641,9 +1647,9 @@ def extract_from_reaction(
 
     # if rdkit cant understand molecule, return
     if None in reactants:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
     if None in products:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
 
     are_unmapped_product_atoms = False
     num_unmapped_product_atoms = 0
@@ -1662,7 +1668,7 @@ def extract_from_reaction(
                 unmapped_ids.append(atom.GetIdx())
                 if num_unmapped_product_atoms > maximum_number_unmapped_product_atoms:
                     # Skip this example - too many unmapped product atoms!
-                    return DEFAULT_EXTRACTED_TEMPLATE
+                    return default_template
         if num_mapped_atoms < len(prod_atoms):
             are_unmapped_product_atoms = True
 
@@ -1682,7 +1688,7 @@ def extract_from_reaction(
     )
     reactants = reactants_in_reaction
     if not reactants:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
 
     # try to sanitize molecules
     try:
@@ -1696,10 +1702,10 @@ def extract_from_reaction(
             mol.UpdatePropertyCache()
     except Exception:
         # can't sanitize -> skip
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
 
     if None in reactants + products:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
 
     extra_reactant_fragment = ""
     if are_unmapped_product_atoms:  # add fragment to template
@@ -1732,9 +1738,9 @@ def extract_from_reaction(
     # Calculate changed atoms
     changed_atoms, changed_atom_tags, err = get_changed_atoms(reactants, products)
     if err:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
     if not changed_atom_tags:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
 
     try:
         # Get fragments for reactants
@@ -1758,7 +1764,7 @@ def extract_from_reaction(
         )
 
     except ValueError:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
 
     # Put together and canonicalize (as best as possible)
     rxn_string = "{}>>{}".format(reactant_fragments, product_fragments)
@@ -1784,9 +1790,9 @@ def extract_from_reaction(
         rdChemReactions.ReactionFromSmarts(retro_canonical)
     )
     if rxn is None:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
     if rxn.Validate()[1] != 0:
-        return DEFAULT_EXTRACTED_TEMPLATE
+        return default_template
 
     template: ExtractedTemplate = {
         "products": products_string,
