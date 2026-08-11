@@ -48,6 +48,9 @@ def configure_logging(
         retention: Log retention period (e.g., "30 days")
         serialize: Whether to serialize log records as JSON
         **kwargs: Additional arguments to pass to logger.add()
+
+    Returns:
+        None
     """
     log_file: Optional[Path] = None
     error_log_file: Optional[Path] = None
@@ -138,10 +141,24 @@ def configure_logging(
 
 
 def disable_library_logging() -> None:
+    """
+    Disable all loguru logging from the rdchiral_plus package.
+
+    This suppresses log records emitted by any module under the ``rdchiral_plus``
+    logger namespace, including those routed to stderr, files, or structured sinks.
+    Called by default at module import time.
+    """
     logger.disable("rdchiral_plus")
 
 
 def enable_library_logging() -> None:
+    """
+    Enable loguru logging from the rdchiral_plus package.
+
+    Re-enables log records emitted by any module under the ``rdchiral_plus``
+    logger namespace. This is called internally by ``configure_logging`` and
+    can also be called directly to reverse ``disable_library_logging``.
+    """
     logger.enable("rdchiral_plus")
 
 
@@ -149,8 +166,8 @@ disable_library_logging()
 
 
 __all__ = [
-    "logger",
     "configure_logging",
     "disable_library_logging",
     "enable_library_logging",
+    "logger",
 ]

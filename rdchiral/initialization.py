@@ -1,8 +1,7 @@
 from typing import Dict, List, Optional, Set, Tuple
 
-import rdkit.Chem as Chem
-import rdkit.Chem.AllChem as AllChem
-from rdkit.Chem import rdChemReactions, rdmolops
+from rdkit import Chem
+from rdkit.Chem import AllChem, rdChemReactions, rdmolops
 from rdkit.Chem.rdchem import BondDir, ChiralType
 
 from rdchiral.bonds import (
@@ -32,12 +31,13 @@ class rdchiralReaction(object):
         template_p: Reaction product template fragments
         atoms_rt_map (dict): Dictionary mapping from atom map number to RDKit Atom for reactants
         atoms_pt_map (dict): Dictionary mapping from atom map number to RDKit Atom for products
-        atoms_rt_idx_to_map (dict): Dictionary mapping from atom idx to RDKit Atom for reactants
-        atoms_pt_idx_to_map (dict): Dictionary mapping from atom idx to RDKit Atom for products
+        atoms_rt_idx_to_map (dict): Dictionary mapping from atom idx to atom map number for reactants
+        atoms_pt_idx_to_map (dict): Dictionary mapping from atom idx to atom map number for products
 
     Args:
         reaction_smarts (str): Reaction SMARTS string
-        lazy_init (bool): If True, delay initialization of template_r and template_p until accessed
+        lazy_init (bool): If True, delay initialization of the reaction object and
+            template fragments until first accessed. Defaults to True.
     """
 
     def __init__(self, reaction_smarts: str, lazy_init: bool = True):
@@ -110,7 +110,13 @@ class rdchiralReaction(object):
         return self._rxn
 
     def _ensure_templates(self) -> None:
-        """Ensure template fragments are initialized"""
+        """
+        Ensure template fragments and derived data are initialized.
+
+        If templates have not yet been created, extracts them from the reaction
+        object, precomputes stereochemistry and atom-map lookups, and caches
+        all derived properties on the instance.
+        """
         if (
             self._template_r_orig is not None
             and self._template_p_orig is not None
@@ -324,7 +330,13 @@ class rdchiralReaction(object):
         return self._template_is_chiral
 
     def reset(self) -> None:
-        """Reset atom map numbers for template fragment atoms"""
+        """
+        Reset template fragment atom-map numbers to their original values.
+
+        Restores `template_r` and `template_p` to copies of `template_r_orig`
+        and `template_p_orig`, discarding any in-place atom-map modifications
+        made during template application.
+        """
         if not self._template_r or not self._template_p:
             self._ensure_templates()
         self._template_r = self._template_r_orig
@@ -338,21 +350,22 @@ class rdchiralReactants(object):
 
     Attributes:
         reactant_smiles (str): Reactant SMILES string
-        reactants (rdkit.Chem.rdchem.Mol): RDKit Molecule create from `_initialize_reactants_from_smiles`
+        reactants (rdkit.Chem.rdchem.Mol): RDKit Molecule created from `_initialize_reactants_from_smiles`
         atoms_r (dict): Dictionary mapping from atom map number to atom in `reactants` Molecule
         reactants_achiral (rdkit.Chem.rdchem.Mol): achiral version of `reactants`
-        bonds_by_mapnum (list): List of reactant bonds
-            (int, int, rdkit.Chem.rdchem.Bond)
+        bonds_by_mapnum (list): List of reactant bonds as
+            (int, int, rdkit.Chem.rdchem.Bond) tuples keyed by atom-map numbers
         bond_dirs_by_mapnum (dict): Dictionary mapping from atom map number tuples to BondDir
         atoms_across_double_bonds (list): List of cis/trans specifications from `get_atoms_across_double_bonds`
 
     Methods:
-        idx_to_mapnum (int): Returns atom map number for given atom idx
+        idx_to_mapnum(idx): Return atom map number for given atom idx
 
     Args:
         reactant_smiles (str): Reactant SMILES string
         custom_reactant_mapping (bool): Whether to use custom reactant mapping
-        lazy_init (bool): If True, delay initialization of template_r and template_p until accessed
+        lazy_init (bool): If True, delay initialization of reactants until accessed
+        enumerate_tautomers (bool): Whether to enumerate tautomers (currently unused)
     """
 
     def __init__(
@@ -536,7 +549,17 @@ def initialize_rxn_from_smarts(
         reaction_smarts (str): Reaction SMARTS string.
 
     Returns:
-        rdChemReactions.ChemicalReaction: RDKit reaction object with validation applied.
+        rdChemReactions.ChemicalReaction: RDKit reaction object with validation applied,
+            stereochemistry assigned, and unmapped reactant atoms filled in.
+
+    Raises:
+        ValueError: If reaction validation fails, or if more than 100 unmapped reactant
+            atoms require new map numbers.
+
+    Note:
+        Reactant atoms whose atom-map number is 0 or does not appear in the products
+        are assigned new map numbers starting at 700. This prevents conflicts with
+        atom-map numbers of input molecules during template application.
     """
     # Initialize reaction
     rxn: rdChemReactions.ChemicalReaction = rdChemReactions.ReactionFromSmarts(
@@ -604,7 +627,8 @@ def _get_template_frags_from_rxn(
         rxn (rdChemReactions.ChemicalReaction): RDKit reaction object
 
     Returns:
-        (Chem., Chem.): tuple of fragment molecules
+        Tuple[Chem.Mol, Chem.Mol]: Tuple of (reactant_template, product_template)
+            fragment molecules, formed by combining all reactant/product mols.
     """
     # Copy reaction template so we can play around with map numbers
     reactants_vec: rdChemReactions.MOL_SPTR_VECT = rxn.GetReactants()

@@ -53,6 +53,9 @@ ignore_missing_imports = true
 module = "rdkit.*"
 follow_imports = "skip"
 
+[tool.ruff.lint]
+ignore = ["UP", "BLE001"]
+
 [tool.pytest.ini_options]
 testpaths = [
     "tests",

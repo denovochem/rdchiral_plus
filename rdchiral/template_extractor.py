@@ -105,7 +105,7 @@ def _initialize_special_group_templates() -> None:
             "Cc1ccc(S(=O)(=O)O)cc1",
         ),  # Tosyl
         ([7], "CC(C)(C)OC(=O)[N]"),  # N(boc)
-        ([4], "[CH3][CH0]([CH3])([CH3])O"),  #
+        ([4], "[CH3][CH0]([CH3])([CH3])O"),
         (
             list(range(2)),
             "[C,N]=[C,N]",
@@ -169,11 +169,11 @@ def _initialize_special_group_templates() -> None:
         ),  # trans with two hydrogens
         (
             [1, 2],
-            "[*]/[CH]=[CH]\[*]",
+            r"[*]/[CH]=[CH]\[*]",
         ),  # cis with two hydrogens
         (
             [1, 2],
-            "[*]/[CH]=[CH0]([*])\[*]",
+            r"[*]/[CH]=[CH0]([*])\[*]",
         ),  # trans with one hydrogens
         (
             [1, 2],
@@ -283,7 +283,7 @@ def replace_deuterated(smi: str) -> str:
     Returns:
         str: The SMILES string with all [2H] deuterium atoms replaced by [H].
     """
-    return re.sub("\[2H\]", r"[H]", smi)
+    return re.sub(r"\[2H\]", r"[H]", smi)
 
 
 def clear_mapnum(mol: Chem.Mol) -> Chem.Mol:
@@ -367,8 +367,8 @@ def get_tetrahedral_atoms(
     Identify tetrahedral (chiral) atoms that are mapped between reactants and products.
 
     This function finds atoms with specified chiral tags in both reactants and products
-    that share the same atom map number. Only atoms with non-unspecified chiral tags
-    (CHI_TETRAHEDRAL_CW or CHI_TETRAHEDRAL_CCW) and valid atom map numbers are considered.
+    that share the same atom map number. Atoms with any chiral tag other than
+    CHI_UNSPECIFIED and a valid (non-zero) atom map number are considered.
 
     Args:
         reactants (List[Chem.Mol]): List of reactant molecules to search for chiral atoms.
@@ -627,9 +627,11 @@ def get_frag_around_tetrahedral_center(mol: Chem.Mol, idx: int) -> str:
     # assuming that for this task, only the chirality of mapped atoms in the fragment
     # matters -- need to double check this
     # Get a list of each mapped atom token in the fragment
-    mapped_atom_tokens = re.findall("\[[0-9]+.*?:[0-9]+\]", init_frag)
+    mapped_atom_tokens = re.findall(r"\[[0-9]+.*?:[0-9]+\]", init_frag)
     map_num_to_chi = {
-        int(re.findall("(?<=\[)[0-9]+", token)[0]): ("").join(re.findall("@+H?", token))
+        int(re.findall(r"(?<=\[)[0-9]+", token)[0]): ("").join(
+            re.findall("@+H?", token)
+        )
         for token in mapped_atom_tokens
     }
     symbols = []
@@ -641,7 +643,7 @@ def get_frag_around_tetrahedral_center(mol: Chem.Mol, idx: int) -> str:
             at_tag = a.GetSymbol()
             iso_tag = a.GetIsotope()
 
-            if iso_tag in map_num_to_chi.keys():
+            if iso_tag in map_num_to_chi:
                 chi_tag = map_num_to_chi[iso_tag]
         else:
             at_tag = "#{}".format(a.GetAtomicNum())
@@ -1049,7 +1051,7 @@ def convert_atom_to_wildcard(atom: Chem.Atom) -> str:
             symbol = symbol[:-1]
 
     # Close with label or with bracket
-    label = re.search("\:[0-9]+\]", atom.GetSmarts())
+    label = re.search(r"\:[0-9]+\]", atom.GetSmarts())
     if label:
         symbol += label.group()
     else:
@@ -1079,7 +1081,7 @@ def reassign_atom_mapping(transform: str) -> str:
         '[C:1][O:2]>>[C:1][O:2]'
     """
 
-    all_labels: List[str] = re.findall("\:([0-9]+)\]", transform)
+    all_labels: List[str] = re.findall(r"\:([0-9]+)\]", transform)
 
     # Define list of replacements which matches all_labels *IN ORDER*
     replacements: List[str] = []
@@ -1093,7 +1095,7 @@ def reassign_atom_mapping(transform: str) -> str:
 
     # Perform replacements in order
     transform_newmaps = re.sub(
-        "\:[0-9]+\]", lambda match: ":" + replacements.pop(0) + "]", transform
+        r"\:[0-9]+\]", lambda match: ":" + replacements.pop(0) + "]", transform
     )
 
     return transform_newmaps
@@ -1192,7 +1194,7 @@ def expand_changed_atom_tags(
 
     expansion = []
     atom_tags_in_reactant_fragments: List[str] = re.findall(
-        "\:([0-9]+)\]", reactant_fragments
+        r"\:([0-9]+)\]", reactant_fragments
     )
     for atom_tag in atom_tags_in_reactant_fragments:
         if not atom_tag.isdigit():
@@ -1531,7 +1533,7 @@ def _canonicalize_template(template: str) -> str:
     """
 
     # Strip labels to get sort orders
-    template_nolabels = re.sub("\:[0-9]+\]", "]", template)
+    template_nolabels = re.sub(r"\:[0-9]+\]", "]", template)
 
     # Split into separate molecules *WITHOUT wrapper parentheses*
     template_nolabels_mols = template_nolabels[1:-1].split(").(")

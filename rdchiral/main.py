@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
-import rdkit.Chem as Chem
+from rdkit import Chem
 from rdkit.Chem import rdmolops
 from rdkit.Chem.rdchem import BondDir, BondType, ChiralType
 
@@ -463,7 +463,7 @@ def rdchiralRun(
             set([unmapped for unmapped, _ in all_products.values()])
         )
     else:
-        final_smiles_list = list(set([mapped for mapped in all_products.keys()]))
+        final_smiles_list = list(set([mapped for mapped in all_products]))
 
     _, combined_enantiomers_dict = combine_enantiomers_into_racemic(
         set(final_smiles_list)
@@ -693,16 +693,19 @@ def return_non_stereo_outcome_early(
             and mapping information.
         rxn (rdchiralReaction): Reaction/template container providing the reactant-side
             template used for substructure matching.
-        keep_mapnums (bool): If True, keep atom mapping numbers in the returned product SMILES.
-            Unmapped atoms (atom map number 0) are assigned new map numbers starting at 900.
+        keep_mapnums (bool): If True, this function returns None (early-return is
+            not supported for mapped output). If False, atom map numbers are cleared
+            from the product molecule before converting to SMILES.
 
     Returns:
         Optional[List[str]]: If the early-return conditions are not met, returns None.
-            Otherwise returns a list containing a single product SMILES string.
+            Otherwise returns a list containing a single product SMILES string (with
+            atom map numbers cleared).
 
     Note:
-        If `keep_mapnums` is False, this function clears atom map numbers in-place on the
-        product molecule before converting to SMILES.
+        Early return is skipped when either the reactants or template is chiral, when
+        there is not exactly one outcome, when `keep_mapnums` is True, or when any
+        outcome contains multiple product molecules.
     """
     if reactants.reactants_is_chiral or rxn.template_is_chiral:
         return None
@@ -822,7 +825,7 @@ def handle_outcomes(
     # Keep track of the reacting atoms for later use in grouping
     atoms_diff = {x: atoms_are_different(atoms_r[x], atoms_p[x]) for x in atoms_rt}
     # make tuple of changed atoms
-    atoms_changed = tuple([x for x in atoms_diff.keys() if atoms_diff[x]])
+    atoms_changed = tuple([x for x in atoms_diff if atoms_diff[x]])
     mapped_outcome = Chem.MolToSmiles(merged_outcome, True)
 
     if not keep_mapnums:
