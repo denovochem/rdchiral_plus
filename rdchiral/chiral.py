@@ -37,9 +37,7 @@ def template_atom_could_have_been_tetra(
     """
 
     if a.HasProp("tetra_possible"):
-        if a.GetBoolProp("tetra_possible"):
-            return True
-        return False
+        return bool(a.GetBoolProp("tetra_possible"))
     if a.GetDegree() < 3 or (
         a.GetDegree() == 3
         and "H" not in a.GetSmarts()
@@ -72,11 +70,12 @@ def copy_chirality(a_src: Chem.Atom, a_new: Chem.Atom) -> None:
     # Not possible to be a tetrahedral center anymore?
     if a_new.GetDegree() < 3:
         return
-    if a_new.GetDegree() == 3 and any(
-        b.GetBondType() != BondType.SINGLE for b in a_new.GetBonds()
+    if (
+        a_new.GetDegree() == 3
+        and any(b.GetBondType() != BondType.SINGLE for b in a_new.GetBonds())
+        and a_new.GetAtomicNum() not in _LONE_PAIR_STEREO_ATOMS
     ):
-        if a_new.GetAtomicNum() not in _LONE_PAIR_STEREO_ATOMS:
-            return
+        return
 
     a_new.SetChiralTag(a_src.GetChiralTag())
 
@@ -91,15 +90,16 @@ def atom_chirality_matches(a_tmp: Chem.Atom, a_mol: Chem.Atom) -> int:
     Also checks to see if chirality needs to be inverted in copy_chirality
 
     Args:
-        a_tmp (rdkit.Chem.rdchem.Atom): RDKit Atom
-        a_mol (rdkit.Chem.rdchem.Mol): RDKit Mol
+        a_tmp (rdkit.Chem.rdchem.Atom): Template atom to compare.
+        a_mol (rdkit.Chem.rdchem.Atom): Molecule atom to compare against the template.
 
     Returns:
-        int: Integer value of match result
-            +1 if it is a match and there is no need for inversion (or ambiguous)
-            -1 if it is a match but they are the opposite
-            0 if an explicit NOT match
-            2 if ambiguous or achiral-achiral
+        int: Integer value of match result:
+            +1 if chirality matches and no inversion is needed.
+            -1 if chirality matches but is the opposite (inversion needed).
+            0 if an explicit NOT match (chiral template vs. achiral molecule that
+              could have been chiral).
+            2 if the comparison is ambiguous or both atoms are achiral.
     """
     if a_mol.GetChiralTag() == ChiralType.CHI_UNSPECIFIED:
         if a_tmp.GetChiralTag() == ChiralType.CHI_UNSPECIFIED:

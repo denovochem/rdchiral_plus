@@ -10,36 +10,36 @@ Wrapper for RDKit's RunReactants to improve stereochemistry handling
 
 This repository is a fork of [rdchiral](https://github.com/connorcoley/rdchiral). It has been modified for improved performance while maintaining high consistency with the upstream library. These modifications provide speed that is marginally slower than the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)), but has the benefits of being written in Python. This library is pip installable cross platform.
 
-The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `rdchiralExtract`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
+The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `extract_from_reaction`, `extract_from_reaction_smiles`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
 
-## Template application
+## Changes to template application
 
-- **Conjugated system bond direction correction**: Corrects corrupted single-bond directions (ENDUPRIGHT, ENDDOWNRIGHT) in conjugated systems. Implemented from [here](https://github.com/connorcoley/rdchiral/pull/40)
+- **[Fix cis/trans outcomes for conjugated systems](https://github.com/connorcoley/rdchiral/pull/40)**: Fixes incorrect cis/trans outcomes for conjugated systems that could previously depend on atom numbering. In particular, when a template only specifies part of a conjugated system, the copied double-bond stereo directions may need to be reversed consistently
 - **Broader stereochemistry handling**: Stereochemistry for tetrahedral centers with lone pairs is accounted for
-- **One-pot reactions**: Templates are initialized with parentheses where needed so that templates defining multiple reactions on the same product are properly handled
+- **One-pot reactions**: Templates defining multiple reactions on the same product are now properly handled by initializing templates with parentheses where needed
 - **Recursive template application**: Templates can be recursively applied with a max_depth parameter, useful for symmetric reactions, or reactions that occur at multiple sites in a molecule
 
-## Template extraction
+## Changes to template extraction
 
-- **Configurable template extraction**: Template extraction supports configurable radius and special group handling. Implemented from [here](https://github.com/connorcoley/rdchiral/commit/78bbafaba040678b957497e7f2638e935104e3d7)
-- **Deterministic template extraction**: Replaced random shuffle-based tetrahedral center correction loops with deterministic permutation parity - the old behavior could lead to inconsistent results or hang in rare instances.
+- **[Configurable template extraction](https://github.com/connorcoley/rdchiral/commit/78bbafaba040678b957497e7f2638e935104e3d7)**: Extends template extraction to support a configurable fragment `radius` and an option to disable matching/including “special groups” (`no_special_groups`), which can change which atoms are included in extracted fragments.
+- **Deterministic template extraction**: Replaced random shuffle-based tetrahedral center correction loops with deterministic permutation parity - the old behavior could lead to inconsistent results or appear to hang in rare instances.
 - **Stereochemistry tracking**: Inversions of tetrahedral centers are counted as a changed atom, and included in the extracted template
 - **Spectator tracking**: Spectator molecules are included in extracted template dictionaries
 
-## General
+## General changes
 
 - **Automatic dependency installation**: RDKit is automatically installed as a dependency
 
 
-## Consistency with the original library
+## Consistency with the upstream library
 
-The changes above result in minor differences in behavior compared to the original library. In most cases where behavior is different, rdchiral_plus produces the more accurate result. The table below shows the roundtripability of extracting a template from atom mapped reaction SMILES, and then applying that template to the product SMILES to recover the expected reactant SMILES. rdchiral_plus reduces the number of incorrect roundtrips by 90% compared to rdchiral, and 94% compared to rdchiral_cpp.
+The changes above result in minor differences in behavior compared to the original library. In most cases where behavior is different, rdchiral_plus produces the more accurate result. As an example, the table below shows the roundtrip success rate of extracting a template from an atom mapped reaction SMILES, applying that template to the product SMILES, and then recovering the expected reactant SMILES. rdchiral_plus reduces the number of incorrect roundtrips by 96% compared to rdchiral, and 98% compared to rdchiral_cpp.
 
 | library | successful roundtrips | success rate |
 | --- | :---: | :---: |
 | rdchiral | 49223 / 50016 | 98.41% |
 | rdchiral_cpp | 48694 / 50016 | 97.36% |
-| rdchiral_plus | 49935 / 50016 | 99.84% |
+| rdchiral_plus | 49988 / 50016 | 99.94% |
 
 
 See [here](docs/consistency.md) for details on how consistency is measured against the original library and full details of what changes you can expect compared to the original rdchiral library.
@@ -74,7 +74,7 @@ RDCHIRAL_USE_MYPYC=1 pip install "git+https://github.com/denovochem/rdchiral_plu
 
 ## Basic usage
 ```python
-from rdchiral import rdchiralRunText, rdchiralReaction, rdchiralReactants
+from rdchiral import rdchiralRun, rdchiralRunText, rdchiralReaction, rdchiralReactants
 
 # Run directly from SMARTS and SMILES strings
 # This is slower than pre-initializing rdchiralReaction and rdchiralReactants when

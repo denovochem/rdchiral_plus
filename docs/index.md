@@ -6,7 +6,7 @@ This repository is a fork of [rdchiral](https://github.com/connorcoley/rdchiral)
 ## Requirements
 
 * RDKit (version >= 2019)
-* Python (version >= 10)
+* Python (version >= 3.10)
 
 ## Installation
 
@@ -32,7 +32,7 @@ RDCHIRAL_USE_MYPYC=1 pip install "git+https://github.com/denovochem/rdchiral_plu
 
 ## Basic usage
 ```python
-from rdchiral import rdchiralRunText, rdchiralReaction, rdchiralReactants
+from rdchiral import rdchiralRun, rdchiralRunText, rdchiralReaction, rdchiralReactants
 
 # Run directly from SMARTS and SMILES (slower than pre-initializing rdchiralReaction and rdchiralReactants when processing a large numbers of reactions)
 reaction_smarts = '[C:1][OH:2]>>[C:1][O:2][C]'
@@ -53,6 +53,14 @@ print(outcomes, mapped_outcomes)
 
 ## Documentation
 Full documentation is available [here](https://denovochem.github.io/rdchiral_plus/)
+
+## Changes from upstream rdchiral
+
+See the [README](https://github.com/denovochem/rdchiral_plus#changes-to-template-application) for a full list of changes to template application, template extraction, and general improvements.
+
+## Consistency with the upstream library
+
+See [consistency](consistency.md) for details on how consistency is measured against the original library and full details of what changes you can expect compared to the original rdchiral library.
 
 ## Contributing
 

@@ -8,7 +8,7 @@ This page describes how we measure consistency with the original rdchiral librar
 
 We compare five operations across environments:
 
-- `rdchiralExtract`: template extraction via `rdchiral.template_extractor.extract_from_reaction`.
+- `rdchiralExtract` (benchmark label for `extract_from_reaction`): template extraction via `rdchiral.template_extractor.extract_from_reaction`.
 - `rdchiralRun`: template application via `rdchiral.main.rdchiralRun` on pre-initialized `rdchiralReaction` / `rdchiralReactants` objects.
 - `rdchiralRun_return_mapped_keep_mapnums`: template application via `rdchiral.main.rdchiralRun` on pre-initialized `rdchiralReaction` / `rdchiralReactants` objects, with return_mapped=True and keep_mapnums=True.
 - `rdchiralRun_return_mapped`: template application via `rdchiral.main.rdchiralRun` on pre-initialized `rdchiralReaction` / `rdchiralReactants` objects, with return_mapped=True.
@@ -42,7 +42,7 @@ The helper script `scripts/run_speed_benchmark_envs.py` builds and runs multiple
 
 `scripts/analyze_consistency.py`:
 
-- Loads all CSVs matching each suffix (`_rdchiralExtract`, `_rdchiralRun`, `_rdchiralRunText`).
+- Loads all CSVs matching each suffix (`_rdchiralExtract`, `_rdchiralRun`, `_rdchiralRun_keep_mapnums`, `_rdchiralRun_return_mapped`, `_rdchiralRunText`).
 - Converts each `outcome` column to `str` and places each environment in a separate column.
 - Computes **row-wise exact string equality** against `original_outcome` and prints the identical count and percentage.
 
@@ -118,12 +118,12 @@ From the repository root:
 
 Relevant upstream changes and discussion:
 
-- **[https://github.com/connorcoley/rdchiral/pull/40](https://github.com/connorcoley/rdchiral/pull/40)**: Fixes incorrect cis/trans outcomes for conjugated systems that could previously depend on atom numbering. In particular, when a template only specifies part of a conjugated system, the copied double-bond stereo directions may need to be reversed consistently.
-- **[https://github.com/connorcoley/rdchiral/pull/31](https://github.com/connorcoley/rdchiral/pull/31)**: Template extraction corner cases could return `None` instead of a dict, leading to inconsistent downstream behavior (and possible `AttributeError`s for callers expecting a mapping). This change makes the return type consistent.
-- **[https://github.com/connorcoley/rdchiral/commit/78bbafaba040678b957497e7f2638e935104e3d7](https://github.com/connorcoley/rdchiral/commit/78bbafaba040678b957497e7f2638e935104e3d7)**: Extends template extraction to support a configurable fragment `radius` and an option to disable matching/including “special groups” (`no_special_groups`), which can change which atoms are included in extracted fragments.
+- **[Fix cis/trans outcomes for conjugated systems](https://github.com/connorcoley/rdchiral/pull/40)**: Fixes incorrect cis/trans outcomes for conjugated systems that could previously depend on atom numbering. In particular, when a template only specifies part of a conjugated system, the copied double-bond stereo directions may need to be reversed consistently.
+- **[Configurable template extraction](https://github.com/connorcoley/rdchiral/commit/78bbafaba040678b957497e7f2638e935104e3d7)**: Extends template extraction to support a configurable fragment `radius` and an option to disable matching/including “special groups” (`no_special_groups`), which can change which atoms are included in extracted fragments.
 - **Deterministic template extraction**: Replaced random shuffle-based tetrahedral center correction loops with deterministic permutation parity calculation. The old behavior could lead to inconsistent results between runs or hang in rare instances with multiple stereocenters.
 - **Broader stereochemistry handling**: Stereochemistry for tetrahedral centers with lone pairs (e.g., sulfur in sulfoxides) is now properly accounted for during template extraction and application.
 - **Stereochemistry tracking**: Inversions of tetrahedral centers are now counted as changed atoms and included in extracted templates, improving accuracy for reactions where stereochemistry changes.
-- **Spectator tracking**: Spectator molecules that participate in the reaction mechanism but don't change are now included in extracted template dictionaries.
 - **One-pot reactions**: Templates defining multiple reactions on the same product are now properly handled by initializing templates with parentheses where needed.
 - **Recursive template application**: Templates can be recursively applied with a configurable `max_depth` parameter, useful for symmetric reactions or reactions that occur at multiple sites in a molecule.
+- **[Consistent return types](https://github.com/connorcoley/rdchiral/pull/31)**: Template extraction corner cases could return `None` instead of a dict, leading to inconsistent downstream behavior. This change makes the return type consistent.
+- **Spectator tracking**: Spectator molecules that participate in the reaction mechanism but don't change are now included in extracted template dictionaries.

@@ -320,5 +320,26 @@
 		"max_depth": 3,
         "expected": ["Cc1c([N+](=O)[O-])cc(N)cc1[N+](=O)[O-]", "Cc1c(N)cc([N+](=O)[O-])cc1[N+](=O)[O-]", "Cc1c(N)cc(N)cc1N", "Cc1c(N)cc(N)cc1[N+](=O)[O-]", "Cc1c(N)cc([N+](=O)[O-])cc1N"],
         "description": "Repeatedly applying reaction templates"
+    },
+    {
+        "smarts": "[Br:1]-[C:2]>>[O;H1;D1]-[C:2].[Br;-1:1]",
+        "smiles": "BrCCC[S@](=O)C1=CC=CC=C1",
+		"max_depth": 1,
+        "expected": ["O=[S@@](CCCO)c1ccccc1.[Br-]"],
+        "description": "Preserve stereochemistry at tetrahedral centers with lone pairs"
+    },
+    {
+        "smarts": "[#7:3]-[C:2](-[NH2;D1;+0:1])=[O;D1;H0:4].[#7:10]-[C:9]-[C;H0;D3;+0:7](-[OH;D1;+0:8])=[N;H0;D2;+0:6]-[OH;D1;+0:5]>>C-C(-C)(-C)-[NH;D2;+0:1]-[C:2](-[#7:3])=[O;D1;H0:4].C-C(-C)(-C)-[O;H0;D2;+0:5]-[NH;D2;+0:6]-[C;H0;D3;+0:7](=[O;H0;D1;+0:8])-[C:9]-[#7:10]",
+        "smiles": "NC(=O)N1CCN(S(=O)(=O)N2CCC(C(=O)c3ccc(Cl)cc3)CC2)C(C(O)=NO)C1",
+		"max_depth": 1,
+        "expected": ["CC(C)(C)NC(=O)N1CCN(S(=O)(=O)N2CCC(C(=O)c3ccc(Cl)cc3)CC2)C(C(=O)NOC(C)(C)C)C1"],
+        "description": "Multiple product fragments"
+    },
+    {
+        "smarts": "[C;D3;H0;+0:3](-[O;H1;D1:4])=[O;D1;H0:5].[O;D1;H1;+0:1]-[*:2]>>[C;D3;H0;+0:3](=[O;D1;H0:5])-[O;D2;H0;+0:1]-[*:2].[O;H1;D0;-1:4]",
+        "smiles": "COc1ccc(-c2ccc(S(=O)(=O)NC(CC(O)CSc3nnc[nH]3)C(=O)O)cc2)cc1",
+		"max_depth": 1,
+        "expected": ["COc1ccc(-c2ccc(S(=O)(=O)NC3CC(CSc4nnc[nH]4)OC3=O)cc2)cc1.[OH-]"],
+        "description": "Multiple product fragments"
     }
 ]

@@ -22,9 +22,23 @@ class ExtractedTemplate(TypedDict):
     necessary_reagent: str
 
 
+DEFAULT_EXTRACTED_TEMPLATE: ExtractedTemplate = {
+    "products": "",
+    "reactants": "",
+    "spectators": "",
+    "reaction_smarts": "",
+    "separated_reaction_smarts": [],
+    "intra_only": False,
+    "dimer_only": False,
+    "reaction_id": "",
+    "necessary_reagent": "",
+}
+
+
 class rdChiralTemplateExtractInput(TypedDict):
     reactants: str
     products: str
+    spectators: str
     _id: str | int | None
 
 
@@ -32,8 +46,32 @@ _SPECIAL_GROUP_TEMPLATES: List[Tuple[List[int], Chem.Mol]] = []
 
 
 def _initialize_special_group_templates() -> None:
-    """Initialize pre-compiled SMARTS patterns for special groups.
-    Called once at module import time."""
+    """
+    Initialize pre-compiled SMARTS patterns for special chemical groups.
+
+    Compiles SMARTS strings into RDKit molecule objects for use in identifying
+    special functional groups and structural patterns during template extraction.
+    The compiled templates are stored in the global _SPECIAL_GROUP_TEMPLATES
+    variable.
+
+    Each template consists of a tuple (add_if_match, pattern) where:
+    - add_if_match (List[int]): Atom indices that trigger inclusion of the group.
+    - pattern (Chem.Mol): A compiled SMARTS pattern for matching.
+
+    Covered groups include common functional groups (carboxylic acids, amides,
+    boronic acids, azides, etc.), metals (Grignard reagents), stereospecific
+    patterns (alkenes with defined stereochemistry), and structural patterns
+    (adjacency to carbonyls, aromatic heteroatoms).
+
+    Returns:
+        None
+
+    Note:
+        This function is called once at module import time. It modifies the
+        global _SPECIAL_GROUP_TEMPLATES variable in-place. If SMARTS compilation
+        fails, the corresponding template is silently excluded (template_mol will
+        be None).
+    """
     global _SPECIAL_GROUP_TEMPLATES
 
     raw_templates: List[Tuple[List[int], str]] = [
@@ -68,7 +106,7 @@ def _initialize_special_group_templates() -> None:
             "Cc1ccc(S(=O)(=O)O)cc1",
         ),  # Tosyl
         ([7], "CC(C)(C)OC(=O)[N]"),  # N(boc)
-        ([4], "[CH3][CH0]([CH3])([CH3])O"),  #
+        ([4], "[CH3][CH0]([CH3])([CH3])O"),
         (
             list(range(2)),
             "[C,N]=[C,N]",
@@ -132,11 +170,11 @@ def _initialize_special_group_templates() -> None:
         ),  # trans with two hydrogens
         (
             [1, 2],
-            "[*]/[CH]=[CH]\[*]",
+            r"[*]/[CH]=[CH]\[*]",
         ),  # cis with two hydrogens
         (
             [1, 2],
-            "[*]/[CH]=[CH0]([*])\[*]",
+            r"[*]/[CH]=[CH0]([*])\[*]",
         ),  # trans with one hydrogens
         (
             [1, 2],
@@ -157,9 +195,24 @@ def _invert_smarts_chirality_for_match(
     match: re.Match, unmapped_only: bool = True
 ) -> str:
     """
-    helper function for `invert_chirality_around_unmapped_ring_closure`
-    input is a re.match object that matches the portion of an atom token
-    where chirality is defined
+    Invert the tetrahedral chirality symbol (@ or @@) in a SMARTS atom token.
+
+    This is a helper function for `invert_chirality_around_unmapped_ring_closure`.
+    Given a regex match containing a tetrahedral chirality token (e.g., [C@H] or [C@@H]),
+    returns the token with inverted chirality ([C@@H] or [C@H] respectively).
+
+    Args:
+        match (re.Match): A regex match object matching the chirality portion of a SMARTS atom token.
+        unmapped_only (bool): If True, only invert chirality for unmapped atoms (those without a colon
+            in the token, which indicates atom mapping). Defaults to True.
+
+    Returns:
+        str: The (possibly inverted) tetrahedral token as a string.
+
+    Note:
+        When unmapped_only is True and the token contains ':' (indicating an atom map number),
+        the original token is returned unchanged. This prevents modifying mapped atoms which
+        should retain their original chirality in reaction templates.
     """
     # only want to change unmapped token:
     tetrahedral_token = match.group(1)
@@ -176,8 +229,22 @@ def _invert_smarts_chirality_for_match(
 
 def invert_chirality_around_unmapped_ring_closure(smarts: str) -> str:
     """
-    Return a smarts string with opposite chiral tags for atoms that precede a
-    ring closure token
+    Invert tetrahedral chirality for unmapped atoms preceding ring closure tokens.
+
+    This function processes a SMARTS string and flips the chirality symbol (@ <-> @@)
+    for carbon atoms that appear immediately before a ring closure digit (1-9). Only
+    unmapped atoms (those without atom map numbers) are modified.
+
+    Args:
+        smarts (str): A SMARTS string representing a molecular pattern.
+
+    Returns:
+        str: The modified SMARTS string with inverted chirality for matching atoms.
+
+    Note:
+        This is used in reaction template extraction to handle chirality invariants
+        when atoms participate in ring closures. The regex pattern matches tetrahedral
+        carbon tokens ([C@...] or [C@@...]) that are followed by a ring closure digit.
     """
     return re.sub(
         r"(\[C@+[^\]]*\])(?=.?[1-9])", _invert_smarts_chirality_for_match, smarts
@@ -185,21 +252,51 @@ def invert_chirality_around_unmapped_ring_closure(smarts: str) -> str:
 
 
 def mols_from_smiles_list(all_smiles: List[str]) -> List[Chem.Mol]:
-    """Given a list of smiles strings, this function creates rdkit
-    molecules"""
+    """
+    Convert a list of SMILES strings to RDKit molecules.
+
+    Empty strings in the input list are skipped. Invalid SMILES strings
+    will result in None values in the returned list.
+
+    Args:
+        all_smiles (List[str]): A list of SMILES strings to convert.
+
+    Returns:
+        List[Chem.Mol]: A list of RDKit molecules. None values may be
+            present for invalid SMILES strings.
+    """
     mols: List[Chem.Mol] = []
     for smiles in all_smiles:
         if not smiles:
             continue
-        mols.append(Chem.MolFromSmiles(smiles))
+        mol = Chem.MolFromSmiles(smiles)
+        mols.append(mol)
     return mols
 
 
 def replace_deuterated(smi: str) -> str:
-    return re.sub("\[2H\]", r"[H]", smi)
+    """
+    Replace deuterium atoms with regular hydrogen atoms in a SMILES string.
+
+    Args:
+        smi (str): The SMILES string potentially containing deuterium atoms.
+
+    Returns:
+        str: The SMILES string with all [2H] deuterium atoms replaced by [H].
+    """
+    return re.sub(r"\[2H\]", r"[H]", smi)
 
 
 def clear_mapnum(mol: Chem.Mol) -> Chem.Mol:
+    """
+    Clear all atom map numbers from a molecule by setting them to 0.
+
+    Args:
+        mol (Chem.Mol): The RDKit molecule whose atom map numbers will be cleared.
+
+    Returns:
+        Chem.Mol: The same molecule with all atom map numbers set to 0.
+    """
     for a in mol.GetAtoms():
         a.SetAtomMapNum(0)
     return mol
@@ -208,8 +305,27 @@ def clear_mapnum(mol: Chem.Mol) -> Chem.Mol:
 def get_tagged_atoms_from_mols(
     mols: List[Chem.Mol],
 ) -> Tuple[List[Chem.Atom], List[int]]:
-    """Takes a list of RDKit molecules and returns total list of
-    atoms and their tags"""
+    """
+    Collect all tagged atoms and their map numbers from a list of RDKit molecules.
+
+    A "tagged" atom is one with a non-zero atom map number. This function iterates
+    over multiple molecules and aggregates all tagged atoms and their corresponding
+    map numbers into flat lists.
+
+    Args:
+        mols (List[Chem.Mol]): A list of RDKit molecules to search for tagged atoms.
+
+    Returns:
+        Tuple[List[Chem.Atom], List[int]]:
+            - First element: List of tagged atoms (atoms with non-zero map numbers).
+            - Second element: List of atom map numbers corresponding to each atom
+              in the first list.
+
+    Note:
+        Atoms and their tags maintain corresponding indices in the two returned lists.
+        The order of atoms follows the iteration order of molecules in the input list
+        and the atom order within each molecule.
+    """
     atoms: List[Chem.Atom] = []
     atom_tags: List[int] = []
     for mol in mols:
@@ -220,8 +336,21 @@ def get_tagged_atoms_from_mols(
 
 
 def get_tagged_atoms_from_mol(mol: Chem.Mol) -> Tuple[List[Chem.Atom], List[int]]:
-    """Takes an RDKit molecule and returns list of tagged atoms and their
-    corresponding numbers"""
+    """
+    Extract atoms with non-zero atom map numbers from an RDKit molecule.
+
+    Args:
+        mol (Chem.Mol): The molecule to extract tagged atoms from.
+
+    Returns:
+        Tuple[List[Chem.Atom], List[int]]:
+            - First list: Atoms that have non-zero atom map numbers.
+            - Second list: Corresponding atom map numbers for each atom.
+
+    Note:
+        Atoms without atom map numbers (GetAtomMapNum() == 0) are excluded.
+        The order of atoms in the returned lists follows the iteration order of the molecule.
+    """
     atoms: List[Chem.Atom] = []
     atom_tags: List[int] = []
     for atom in mol.GetAtoms():
@@ -235,6 +364,23 @@ def get_tagged_atoms_from_mol(mol: Chem.Mol) -> Tuple[List[Chem.Atom], List[int]
 def get_tetrahedral_atoms(
     reactants: List[Chem.Mol], products: List[Chem.Mol]
 ) -> List[Tuple[int, Chem.Atom, Chem.Atom]]:
+    """
+    Identify tetrahedral (chiral) atoms that are mapped between reactants and products.
+
+    This function finds atoms with specified chiral tags in both reactants and products
+    that share the same atom map number. Atoms with any chiral tag other than
+    CHI_UNSPECIFIED and a valid (non-zero) atom map number are considered.
+
+    Args:
+        reactants (List[Chem.Mol]): List of reactant molecules to search for chiral atoms.
+        products (List[Chem.Mol]): List of product molecules to search for chiral atoms.
+
+    Returns:
+        List[Tuple[int, Chem.Atom, Chem.Atom]]: A list of tuples, where each tuple contains:
+            - The atom map number (int) identifying the matched chiral center.
+            - The corresponding chiral atom from the reactant (Chem.Atom).
+            - The corresponding chiral atom from the product (Chem.Atom).
+    """
     tetrahedral_atoms: List[Tuple[int, Chem.Atom, Chem.Atom]] = []
 
     reactant_atom_tags: Dict[int, Chem.Atom] = {}
@@ -260,9 +406,9 @@ def get_tetrahedral_atoms(
             product_atom_tags[atom_tag] = ap
 
     for atom_tag, ar in reactant_atom_tags.items():
-        ap = product_atom_tags.get(atom_tag)
-        if ap is not None:
-            tetrahedral_atoms.append((atom_tag, ar, ap))
+        ap_opt: Optional[Chem.Atom] = product_atom_tags.get(atom_tag)
+        if ap_opt is not None:
+            tetrahedral_atoms.append((atom_tag, ar, ap_opt))
 
     return tetrahedral_atoms
 
@@ -271,8 +417,24 @@ def get_stereogenic_double_bonds(
     reactants: List[Chem.Mol], products: List[Chem.Mol]
 ) -> List[Tuple[int, int]]:
     """
-    Find double bonds where stereochemistry is specified or changes.
-    Returns list of (map_num1, map_num2) tuples for stereo double bond atoms.
+    Identify double bonds with stereochemical differences between reactants and products.
+
+    Compares double bond stereochemistry between corresponding atoms in reactants and
+    products. A bond is considered stereogenic if stereochemistry is explicitly defined
+    on either side of the reaction and differs between reactants and products.
+
+    Args:
+        reactants (List[Chem.Mol]): List of reactant molecules with atom map numbers.
+        products (List[Chem.Mol]): List of product molecules with atom map numbers.
+
+    Returns:
+        List[Tuple[int, int]]: List of atom map number pairs identifying stereogenic
+            double bonds. Each tuple contains two sorted atom map numbers.
+
+    Note:
+        Bonds are matched using atom map numbers. Only double bonds with atom map
+        numbers on both atoms are considered. Bonds present in only one side of the
+        reaction are included if they have defined stereochemistry.
     """
     # Build map of atom map numbers to bonds in reactants
     reactant_bonds: Dict[Tuple[int, int], BondStereo] = {}
@@ -284,7 +446,7 @@ def get_stereogenic_double_bonds(
             atom1_map = bond.GetBeginAtom().GetAtomMapNum()
             atom2_map = bond.GetEndAtom().GetAtomMapNum()
             if atom1_map and atom2_map:
-                key = tuple(sorted([atom1_map, atom2_map]))
+                key: Tuple[int, int] = tuple(sorted([atom1_map, atom2_map]))  # type: ignore[assignment]
                 reactant_bonds[key] = bond.GetStereo()
 
     # Build map for products
@@ -297,8 +459,8 @@ def get_stereogenic_double_bonds(
             atom1_map = bond.GetBeginAtom().GetAtomMapNum()
             atom2_map = bond.GetEndAtom().GetAtomMapNum()
             if atom1_map and atom2_map:
-                key = tuple(sorted([atom1_map, atom2_map]))
-                product_bonds[key] = bond.GetStereo()
+                pkey: Tuple[int, int] = tuple(sorted([atom1_map, atom2_map]))  # type: ignore[assignment]
+                product_bonds[pkey] = bond.GetStereo()
 
     # Find bonds that have stereochemistry that changes or is specified
     stereogenic_bonds = []
@@ -326,10 +488,31 @@ def ensure_complete_stereo_double_bonds(
     """
     Ensures that for any stereogenic double bond in the fragment, all necessary
     atoms (the bond atoms + one neighbor on each side) are included.
+
+    When extracting a substructure fragment, stereogenic double bonds require
+    all atoms of the bond plus at least one neighbor on each side to preserve
+    stereochemical information. This function scans the atoms in the fragment,
+    identifies any stereogenic double bonds, and ensures both bond atoms and
+    at least one neighbor per bond atom are included in the fragment.
+
+    Args:
+        mol (Chem.Mol): The full molecule from which the fragment is extracted.
+        atoms_to_use (List[int]): List of atom indices currently in the fragment.
+        symbol_replacements (List[Tuple[int, str]]): List of (atom_idx, SMARTS)
+            pairs for atoms that should use custom SMARTS patterns in the
+            template instead of their default atomic representation.
+        use_stereochemistry (bool): If False, returns inputs unchanged without
+            processing stereochemistry. Defaults to True.
+
+    Returns:
+        Tuple[List[int], List[Tuple[int, str]]]:
+            - Updated list of atom indices with any missing stereochem-required
+              atoms appended.
+            - Updated list of symbol replacements with entries for newly added
+              atoms (bond atoms use strict SMARTS, neighbors use wildcards).
     """
     if not use_stereochemistry:
         return atoms_to_use, symbol_replacements
-
     # Use a set for efficient checking and a list to maintain order
     atoms_to_use_set = set(atoms_to_use)
 
@@ -404,8 +587,28 @@ def ensure_complete_stereo_double_bonds(
 
 
 def get_frag_around_tetrahedral_center(mol: Chem.Mol, idx: int) -> str:
-    """Builds a MolFragment using neighbors of a tetrahedral atom,
-    where the molecule has already been updated to include isotopes"""
+    """
+    Build a molecular fragment around a tetrahedral center, preserving chirality.
+
+    Creates a fragment containing the specified tetrahedral center atom and all its
+    immediate neighbors. Uses isotope labels to track mapped atoms and preserve
+    their stereochemical configuration in the resulting SMILES string.
+
+    Args:
+        mol (Chem.Mol): The molecule containing the tetrahedral center. Must have
+            isotope labels already assigned to mapped atoms.
+        idx (int): Atom index of the tetrahedral center.
+
+    Returns:
+        str: SMILES string of the fragment with explicit chirality, bonds, and hydrogens.
+
+    Note:
+        This function uses a two-pass approach to preserve chirality: first extracting
+        an initial fragment to capture chiral tags from RDKit's SMILES output, then
+        reconstructing atom symbols with isotope and chirality information. This is
+        necessary because RDKit cleans chiral tags when obtained from the atom object
+        directly versus from the SMILES representation.
+    """
     ids_to_include: List[int] = [idx]
     for neighbor in mol.GetAtomWithIdx(idx).GetNeighbors():
         ids_to_include.append(neighbor.GetIdx())
@@ -425,9 +628,11 @@ def get_frag_around_tetrahedral_center(mol: Chem.Mol, idx: int) -> str:
     # assuming that for this task, only the chirality of mapped atoms in the fragment
     # matters -- need to double check this
     # Get a list of each mapped atom token in the fragment
-    mapped_atom_tokens = re.findall("\[[0-9]+.*?:[0-9]+\]", init_frag)
+    mapped_atom_tokens = re.findall(r"\[[0-9]+.*?:[0-9]+\]", init_frag)
     map_num_to_chi = {
-        int(re.findall("(?<=\[)[0-9]+", token)[0]): ("").join(re.findall("@+H?", token))
+        int(re.findall(r"(?<=\[)[0-9]+", token)[0]): ("").join(
+            re.findall("@+H?", token)
+        )
         for token in mapped_atom_tokens
     }
     symbols = []
@@ -439,7 +644,7 @@ def get_frag_around_tetrahedral_center(mol: Chem.Mol, idx: int) -> str:
             at_tag = a.GetSymbol()
             iso_tag = a.GetIsotope()
 
-            if iso_tag in map_num_to_chi.keys():
+            if iso_tag in map_num_to_chi:
                 chi_tag = map_num_to_chi[iso_tag]
         else:
             at_tag = "#{}".format(a.GetAtomicNum())
@@ -461,9 +666,24 @@ def get_frag_around_tetrahedral_center(mol: Chem.Mol, idx: int) -> str:
 
 
 def check_tetrahedral_centers_equivalent(atom1: Chem.Atom, atom2: Chem.Atom) -> bool:
-    """Checks to see if tetrahedral centers are equivalent in
-    chirality, ignoring the ChiralTag. Owning molecules of the
-    input atoms must have been Isotope-mapped"""
+    """
+    Check if two tetrahedral centers have equivalent chirality configurations.
+
+    Determines whether two atoms from potentially different molecules represent
+    the same tetrahedral stereochemical configuration, ignoring explicit ChiralTag
+    values. This is done by extracting a fragment around atom1 and checking if
+    atom2 matches within that fragment using substructure matching with chirality.
+
+    Args:
+        atom1 (Chem.Atom): The reference tetrahedral center atom. Its owning molecule
+            must have isotope labels assigned to mapped atoms.
+        atom2 (Chem.Atom): The atom to compare against atom1. Its owning molecule
+            must also have isotope labels assigned to mapped atoms.
+
+    Returns:
+        bool: True if atom2 is part of a substructure match indicating equivalent
+            chirality to atom1; False otherwise or if fragment parsing fails.
+    """
     atom1_frag = get_frag_around_tetrahedral_center(
         atom1.GetOwningMol(), atom1.GetIdx()
     )
@@ -482,7 +702,25 @@ def check_tetrahedral_centers_equivalent(atom1: Chem.Atom, atom2: Chem.Atom) -> 
 def get_changed_atoms(
     reactants: List[Chem.Mol], products: List[Chem.Mol]
 ) -> Tuple[List[Chem.Atom], List[int], int]:
-    """Looks at mapped atoms in a reaction and determines which ones changed"""
+    """
+    Identify atoms that change during a reaction by comparing reactants and products.
+
+    Examines atom-mapped atoms across reactants and products to determine which atoms
+    undergo chemical or stereochemical changes. This includes atoms that are leaving
+    groups (appear only in reactants), atoms whose properties differ between reactants
+    and products, and atoms involved in stereochemical changes (tetrahedral chirality
+    or double bond stereochemistry) that are adjacent to the reaction center.
+
+    Args:
+        reactants (List[Chem.Mol]): List of reactant molecules with atom map numbers.
+        products (List[Chem.Mol]): List of product molecules with atom map numbers.
+
+    Returns:
+        Tuple[List[Chem.Atom], List[int], int]:
+            - changed_atoms: List of reactant atoms that undergo changes.
+            - changed_atom_tags: List of atom map numbers corresponding to changed atoms.
+            - err: Error code (0 if successful, non-zero if an error occurred).
+    """
 
     err = 0
     prod_atoms, prod_atom_tags = get_tagged_atoms_from_mols(products)
@@ -574,14 +812,32 @@ def get_changed_atoms(
 
 
 def get_special_groups(mol: Chem.Mol) -> List[Tuple[List[int], List[int]]]:
-    """Given an RDKit molecule, this function returns a list of tuples, where
-    each tuple contains the AtomIdx's for a special group of atoms which should
-    be included in a fragment all together. This should only be done for the
-    reactants, otherwise the products might end up with mapping mismatches
+    """
+    Identify special functional groups in a molecule that should be included
+    together as a unit during template extraction.
 
-    We draw a distinction between atoms in groups that trigger that whole
-    group to be included, and "unimportant" atoms in the groups that will not
-    be included if another atom matches."""
+    Searches the molecule for predefined special group patterns (e.g.,
+    nitro groups, conjugated systems) and returns the atom indices for each
+    matched group. This is used during reactant template extraction to ensure
+    chemically meaningful fragments are kept together.
+
+    Args:
+        mol (Chem.Mol): The RDKit molecule to search for special groups.
+
+    Returns:
+        List[Tuple[List[int], List[int]]]: A list of tuples, where each tuple
+            contains:
+            - First element (List[int]): Atom indices that trigger inclusion of
+              the entire group when matched ("important" atoms).
+            - Second element (List[int]): All atom indices in the matched group.
+
+    Note:
+        This should only be applied to reactants, not products. Applying to
+        products can cause mapping mismatches. The function distinguishes between
+        "important" atoms (which trigger group inclusion) and "unimportant"
+        atoms (which are only included if an important atom in the same group
+        is matched).
+    """
 
     # Build list
     groups: List[Tuple[List[int], List[int]]] = []
@@ -604,10 +860,28 @@ def expand_atoms_to_use(
     groups: Optional[List[Any]] = None,
     symbol_replacements: Optional[List[Tuple[int, str]]] = None,
 ) -> Tuple[List[int], List[Tuple[int, str]]]:
-    """Given an RDKit molecule and a list of AtomIdX which should be included
-    in the reaction, this function expands the list of AtomIdXs to include one
-    nearest neighbor with special consideration of (a) unimportant neighbors and
-    (b) important functional groupings"""
+    """
+    Expand a list of atom indices to include nearest neighbors and functional groups.
+
+    Iterates over atoms already marked for inclusion and expands the selection by:
+    (1) adding all atoms from any functional group containing a marked atom, and
+    (2) evaluating each nearest neighbor for inclusion via expand_atoms_to_use_atom.
+    Neighbors that are added are converted to wildcard SMARTS symbols for generalizability.
+
+    Args:
+        mol (Chem.Mol): The RDKit molecule containing the atoms.
+        atoms_to_use (List[int]): Atom indices already selected for inclusion.
+        groups (Optional[List[Any]]): Functional group definitions where each group
+            is typically a tuple of (match_atoms, include_atoms). Atoms in match_atoms
+            trigger inclusion of all atoms in include_atoms.
+        symbol_replacements (Optional[List[Tuple[int, str]]]): Existing list of
+            (atom_idx, smarts_symbol) pairs for wildcard replacements. Modified in-place.
+
+    Returns:
+        Tuple[List[int], List[Tuple[int, str]]]:
+            - Expanded list of atom indices to include.
+            - Updated list of symbol replacement tuples for wildcard atoms.
+    """
 
     if groups is None:
         groups = []
@@ -652,10 +926,35 @@ def expand_atoms_to_use_atom(
     groups: Optional[List[Tuple[List[int], List[int]]]] = None,
     symbol_replacements: Optional[List[Tuple[int, str]]] = None,
 ) -> Tuple[List[int], List[Tuple[int, str]]]:
-    """Given an RDKit molecule and a list of AtomIdx which should be included
-    in the reaction, this function extends the list of atoms_to_use by considering
-    a candidate atom extension, atom_idx"""
+    """
+    Extend the list of atoms to use by considering a candidate atom extension.
 
+    Given an RDKit molecule and a list of atom indices that should be included
+    in the reaction, this function extends the list by processing a candidate
+    atom. If the atom belongs to a special functional group, all atoms in that
+    group are added. Otherwise, the single atom is added with a SMARTS wildcard
+    replacement.
+
+    Args:
+        mol (Chem.Mol): The RDKit molecule containing the atoms.
+        atoms_to_use (List[int]): List of atom indices already included in the reaction.
+        atom_idx (int): Index of the candidate atom to consider for extension.
+        groups (Optional[List[Tuple[List[int], List[int]]]]): List of special functional
+            groups where each group is a tuple of (match_atoms, include_atoms). If the
+            candidate atom is in match_atoms, all include_atoms are added.
+        symbol_replacements (Optional[List[Tuple[int, str]]]): List of (atom_idx, smarts)
+            tuples for SMARTS wildcard replacements. Modified in-place when atoms are added.
+
+    Returns:
+        Tuple[List[int], List[Tuple[int, str]]]:
+            - Updated list of atom indices to use (may contain new atoms).
+            - Updated list of symbol replacements for SMARTS generation.
+
+    Note:
+        Groups have highest priority - if an atom matches any group, all atoms in that
+        group's include list are added. If the atom is already in atoms_to_use, it is
+        skipped unless it triggers a group expansion.
+    """
     if not groups:
         groups = []
 
@@ -697,10 +996,28 @@ def expand_atoms_to_use_atom(
 
 
 def convert_atom_to_wildcard(atom: Chem.Atom) -> str:
-    """This function takes an RDKit atom and turns it into a wildcard
-    using heuristic generalization rules. This function should be used
-    when candidate atoms are used to extend the reaction core for higher
-    generalizability"""
+    """
+    Convert an RDKit atom to a generalized wildcard SMARTS string.
+
+    Uses heuristic generalization rules to create a SMARTS pattern that matches
+    chemically equivalent atoms. Terminal atoms (degree == 1) are handled
+    differently from non-terminal atoms to preserve hydrogen count information.
+    Atom mapping labels from the original SMARTS are preserved in the output.
+
+    Args:
+        atom (Chem.Atom): The RDKit atom to convert to a wildcard pattern.
+
+    Returns:
+        str: A SMARTS string representing the generalized atom wildcard.
+            For terminal atoms: includes symbol, degree (D1), H-count, and charge.
+            For non-terminal atoms: includes atomic number (or C/c for carbon),
+            aromaticity flag, and charge. Atom mapping labels are preserved.
+
+    Note:
+        Carbon atoms receive special handling: aliphatic carbons use 'C',
+        aromatic carbons use 'c', while non-carbon atoms use '#{atomic_num}'
+        notation with an optional 'a' flag for aromaticity.
+    """
 
     # Is this a terminal atom? We can tell if the degree is one
     if atom.GetDegree() == 1:
@@ -735,7 +1052,7 @@ def convert_atom_to_wildcard(atom: Chem.Atom) -> str:
             symbol = symbol[:-1]
 
     # Close with label or with bracket
-    label = re.search("\:[0-9]+\]", atom.GetSmarts())
+    label = re.search(r"\:[0-9]+\]", atom.GetSmarts())
     if label:
         symbol += label.group()
     else:
@@ -745,11 +1062,27 @@ def convert_atom_to_wildcard(atom: Chem.Atom) -> str:
 
 
 def reassign_atom_mapping(transform: str) -> str:
-    """This function takes an atom-mapped reaction SMILES and reassigns
-    the atom-mapping labels (numbers) from left to right, once
-    that transform has been canonicalized."""
+    """
+    Reassign atom-mapping labels in a reaction SMILES from left to right.
 
-    all_labels: List[str] = re.findall("\:([0-9]+)\]", transform)
+    Takes an atom-mapped reaction SMILES and reassigns the atom-mapping labels
+    (numbers) sequentially from left to right, starting from 1. Labels are
+    reassigned based on their first occurrence in the string, maintaining the
+    mapping consistency between reactants and products.
+
+    Args:
+        transform (str): An atom-mapped reaction SMILES string with labels
+            in the format ":N]" where N is the atom-mapping number.
+
+    Returns:
+        str: The reaction SMILES with reassigned atom-mapping labels.
+
+    Example:
+        >>> reassign_atom_mapping("[C:2][O:1]>>[C:1][O:2]")
+        '[C:1][O:2]>>[C:1][O:2]'
+    """
+
+    all_labels: List[str] = re.findall(r"\:([0-9]+)\]", transform)
 
     # Define list of replacements which matches all_labels *IN ORDER*
     replacements: List[str] = []
@@ -763,7 +1096,7 @@ def reassign_atom_mapping(transform: str) -> str:
 
     # Perform replacements in order
     transform_newmaps = re.sub(
-        "\:[0-9]+\]", lambda match: ":" + replacements.pop(0) + "]", transform
+        r"\:[0-9]+\]", lambda match: ":" + replacements.pop(0) + "]", transform
     )
 
     return transform_newmaps
@@ -773,8 +1106,19 @@ def get_strict_smarts_for_atom(
     atom: Chem.Atom, use_stereochemistry: bool = True
 ) -> str:
     """
-    For an RDkit atom object, generate a SMARTS pattern that
-    matches the atom as strictly as possible
+    Generate a SMARTS pattern that matches an RDKit atom as strictly as possible.
+
+    The pattern includes explicit atom properties: atomic symbol, stereochemistry,
+    total hydrogen count, degree (number of explicit connections), and formal charge.
+
+    Args:
+        atom (Chem.Atom): The RDKit atom object to generate a SMARTS for.
+        use_stereochemistry (bool): If True, include the atom's chiral tag (@ or @@)
+            in the SMARTS pattern. Defaults to True.
+
+    Returns:
+        str: A SMARTS pattern string that strictly matches atoms with the same
+            properties as the input atom.
     """
 
     symbol = atom.GetSmarts()
@@ -786,17 +1130,21 @@ def get_strict_smarts_for_atom(
 
     # Explicit stereochemistry - *before* H
     if use_stereochemistry:
-        if atom.GetChiralTag() != Chem.rdchem.ChiralType.CHI_UNSPECIFIED:
-            if "@" not in symbol:
-                # Be explicit when there is a tetrahedral chiral tag
-                if atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW:
-                    tag = "@"
-                elif atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW:
-                    tag = "@@"
-                if ":" in symbol:
-                    symbol = symbol.replace(":", ";{}:".format(tag))
-                else:
-                    symbol = symbol.replace("]", ";{}]".format(tag))
+        if (
+            atom.GetChiralTag() != Chem.rdchem.ChiralType.CHI_UNSPECIFIED
+            and "@" not in symbol
+        ):
+            # Be explicit when there is a tetrahedral chiral tag
+            if atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW:
+                tag = "@"
+            elif atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW:
+                tag = "@@"
+            if ":" in symbol:
+                symbol = symbol.replace(":", ";{}:".format(tag))
+            else:
+                symbol = symbol.replace("]", ";{}]".format(tag))
+    else:
+        symbol = symbol.replace("@@", "").replace("@", "")
 
     if "H" not in symbol:
         H_symbol = "H{}".format(atom.GetTotalNumHs())
@@ -828,14 +1176,28 @@ def get_strict_smarts_for_atom(
 def expand_changed_atom_tags(
     changed_atom_tags: List[int], reactant_fragments: str
 ) -> List[int]:
-    """Given a list of changed atom tags (numbers as strings) and a string consisting
-    of the reactant_fragments to include in the reaction transform, this function
-    adds any tagged atoms found in the reactant side of the template to the
-    changed_atom_tags list so that those tagged atoms are included in the products"""
+    """
+    Expand the list of changed atom tags with additional tags found in reactant fragments.
+
+    Given a list of changed atom tags and a reactant fragments string, this function
+    identifies atom tags present in the reactant fragments (using the pattern ':<number>]')
+    and returns those tags which are not already present in the changed_atom_tags list.
+    This ensures that tagged atoms from the reactant side are included in the products.
+
+    Args:
+        changed_atom_tags (List[int]): List of atom tag numbers already identified as changed.
+        reactant_fragments (str): SMILES-like string containing atom tags (e.g., '[*+:1]') from the reactant side.
+
+    Returns:
+        List[int]: List of atom tag numbers found in reactant_fragments that are not already in changed_atom_tags.
+
+    Raises:
+        ValueError: If an atom tag extracted from reactant_fragments is not a valid digit string.
+    """
 
     expansion = []
     atom_tags_in_reactant_fragments: List[str] = re.findall(
-        "\:([0-9]+)\]", reactant_fragments
+        r"\:([0-9]+)\]", reactant_fragments
     )
     for atom_tag in atom_tags_in_reactant_fragments:
         if not atom_tag.isdigit():
@@ -856,12 +1218,38 @@ def get_fragments_for_changed_atoms(
     include_all_unmapped_reactant_atoms: bool = True,
     use_stereochemistry: bool = True,
 ) -> Tuple[str, bool, bool]:
-    """Given a list of RDKit mols and a list of changed atom tags, this function
-    computes the SMILES string of molecular fragments using MolFragmentToSmiles
-    for all changed fragments.
+    """
+    Extract molecular fragments around changed atoms from a list of RDKit molecules.
 
-    expansion: atoms added during reactant expansion that should be included and
-               generalized in product fragment
+    For each molecule, identifies atoms marked by the provided tags, expands the
+    selection by the specified radius, and generates SMILES strings using
+    MolFragmentToSmiles. Handles stereochemistry preservation, special reactive
+    groups, and unmapped atom inclusion based on the category (reactants or products).
+
+    Args:
+        mols (List[Chem.Mol]): List of RDKit molecules to extract fragments from.
+        changed_atom_tags (List[int]): List of atom map tags identifying changed atoms.
+        radius (int): Number of bond hops to expand from changed atoms. Defaults to 0.
+        category (str): Molecule category, either "reactants" or "products". Defaults to "reactants".
+        expansion (Optional[List[int]]): Additional atom tags to include in product fragments
+            that should be generalized as wildcards. Defaults to None.
+        no_special_groups (bool): If True, skip detection of special reactive groups
+            (reactants only). Defaults to False.
+        include_all_unmapped_reactant_atoms (bool): If True, include all unmapped atoms
+            in reactant fragments. Defaults to True.
+        use_stereochemistry (bool): If True, preserve stereochemistry in fragment SMILES
+            and perform chirality mismatch correction. Defaults to True.
+
+    Returns:
+        Tuple[str, bool, bool]:
+            - SMILES string of extracted fragments, concatenated with dots (periods removed
+              from individual fragments).
+            - Boolean indicating if this is an intramolecular reaction (single changed molecule).
+            - Boolean indicating if this is a dimerization (two identical changed molecules).
+
+    Raises:
+        ValueError: If an atom tag contains non-digit characters.
+        RuntimeError: If MolFragmentToSmiles fails even with isomericSmiles=False.
     """
     if expansion is None:
         expansion = []
@@ -896,11 +1284,14 @@ def get_fragments_for_changed_atoms(
                     continue
 
         # Fully define leaving groups and this molecule participates?
-        if include_all_unmapped_reactant_atoms and len(atoms_to_use) > 0:
-            if category == "reactants":
-                for atom in mol.GetAtoms():
-                    if not atom.GetAtomMapNum():
-                        atoms_to_use.append(atom.GetIdx())
+        if (
+            include_all_unmapped_reactant_atoms
+            and len(atoms_to_use) > 0
+            and category == "reactants"
+        ):
+            for atom in mol.GetAtoms():
+                if not atom.GetAtomMapNum():
+                    atoms_to_use.append(atom.GetIdx())
 
         # Check neighbors (any atom)
         for k in range(radius):
@@ -967,17 +1358,14 @@ def get_fragments_for_changed_atoms(
                 allBondsExplicit=True,
             )
         except RuntimeError:
-            try:
-                this_fragment = rdmolfiles.MolFragmentToSmiles(
-                    mol_without_map_nums,
-                    atoms_to_use,
-                    atomSymbols=symbols,
-                    allHsExplicit=True,
-                    isomericSmiles=False,
-                    allBondsExplicit=True,
-                )
-            except RuntimeError as e2:
-                raise e2
+            this_fragment = rdmolfiles.MolFragmentToSmiles(
+                mol_without_map_nums,
+                atoms_to_use,
+                atomSymbols=symbols,
+                allHsExplicit=True,
+                isomericSmiles=False,
+                allBondsExplicit=True,
+            )
 
         if use_stereochemistry:
             this_fragment_mol = rdmolfiles.MolFromSmarts(this_fragment)
@@ -1037,6 +1425,22 @@ def get_fragments_for_changed_atoms(
 
 
 def split_reaction_smarts(reaction_smarts: str) -> List[str]:
+    """
+    Split a multi-component reaction SMARTS into individual component reactions.
+
+    Parses a reaction SMARTS containing multiple reactants and/or products,
+    then splits it into separate reaction SMARTS strings where each reactant
+    is paired only with the product(s) that share atom map numbers with it.
+
+    Args:
+        reaction_smarts (str): An atom-mapped reaction SMARTS string in the
+            format "reactant1.react2>>product1.prod2".
+
+    Returns:
+        List[str]: A list of split reaction SMARTS strings, where each string
+            contains one reactant and its associated product(s) based on
+            shared atom map numbers.
+    """
     reactants = reaction_smarts.split(">>")[0]
     products = reaction_smarts.split(">>")[1]
 
@@ -1079,10 +1483,25 @@ def split_reaction_smarts(reaction_smarts: str) -> List[str]:
 
 
 def canonicalize_transform(transform: str, fix_cycle_chirality: bool = True) -> str:
-    """This function takes an atom-mapped SMARTS transform and
-    converts it to a canonical form by, if nececssary, rearranging
-    the order of reactant and product templates and reassigning
-    atom maps."""
+    """
+    Convert an atom-mapped SMARTS transform to a canonical form.
+
+    The transform is canonicalized by reordering reactant and product templates
+    based on their unmapped representations and reassigning atom-mapping labels
+    sequentially. Optionally, chirality around unmapped ring closures can be
+    inverted to handle stereochemical invariants.
+
+    Args:
+        transform (str): An atom-mapped reaction SMARTS string in the form
+            "reactants>>products".
+        fix_cycle_chirality (bool): If True, invert tetrahedral chirality for
+            unmapped atoms preceding ring closure tokens to handle stereochemical
+            invariants in cyclic templates.
+
+    Returns:
+        str: The canonicalized reaction SMARTS with reordered templates and
+            sequentially reassigned atom-mapping labels.
+    """
 
     transform_reordered = ">>".join(
         [_canonicalize_template(x) for x in transform.split(">>")]
@@ -1097,12 +1516,27 @@ def canonicalize_transform(transform: str, fix_cycle_chirality: bool = True) -> 
 
 
 def _canonicalize_template(template: str) -> str:
-    """This function takes one-half of a template SMARTS string
-    (i.e., reactants or products) and re-orders them based on
-    an equivalent string without atom mapping."""
+    """
+    Canonicalize a template SMARTS string by sorting fragments and molecules.
+
+    This function takes one-half of a template SMARTS string (i.e., reactants or
+    products) and re-orders fragments within molecules and molecules themselves
+    based on lexicographic ordering of an equivalent string without atom mapping.
+    This ensures consistent template representation regardless of input order.
+
+    Args:
+        template (str): A template SMARTS string representing one side of a
+            reaction (reactants or products). Expected format wraps molecules
+            in parentheses and separates them with ').(', with fragments within
+            molecules separated by '.' and atom mapping labels like ':N]'.
+
+    Returns:
+        str: The canonicalized template with fragments sorted within each molecule
+            and molecules sorted overall, maintaining original atom mapping labels.
+    """
 
     # Strip labels to get sort orders
-    template_nolabels = re.sub("\:[0-9]+\]", "]", template)
+    template_nolabels = re.sub(r"\:[0-9]+\]", "]", template)
 
     # Split into separate molecules *WITHOUT wrapper parentheses*
     template_nolabels_mols = template_nolabels[1:-1].split(").(")
@@ -1142,17 +1576,69 @@ def extract_from_reaction(
     maximum_number_unmapped_product_atoms: int = 5,
     include_all_unmapped_reactant_atoms: bool = True,
 ) -> ExtractedTemplate:
+    """
+    Extract a retrosynthetic reaction template from a mapped chemical reaction.
 
-    default_extracted_template: ExtractedTemplate = {
-        "products": "",
-        "reactants": "",
-        "spectators": "",
-        "reaction_smarts": "",
-        "separated_reaction_smarts": [],
-        "intra_only": False,
-        "dimer_only": False,
+    This function analyzes a chemical reaction with atom-mapped reactants and products
+    to identify the reaction center and extract a template representing the
+    transformation. The template captures the local environment around atoms that
+    change during the reaction, including bonds formed, broken, or modified.
+
+    Args:
+        reaction (rdChiralTemplateExtractInput): Dictionary containing the reaction
+            data with keys 'reactants' (SMILES string), 'products' (SMILES string),
+            and '_id' (optional reaction identifier).
+        no_special_groups (bool): If True, disable special functional group handling
+            during fragment extraction. Defaults to False.
+        radius (int): Number of bonds to expand around changed atoms when extracting
+            fragments. A larger radius captures more context. Defaults to 1.
+        use_stereochemistry (bool): If True, include stereochemical information in
+            the extracted template. Defaults to True.
+        canonicalize_template (bool): If True, canonicalize the reaction SMARTS
+            string for consistent representation. Defaults to True.
+        maximum_number_unmapped_product_atoms (int): Maximum allowed number of
+            unmapped atoms in the products. Reactions exceeding this limit are
+            skipped. Defaults to 5.
+        include_all_unmapped_reactant_atoms (bool): If True, include all unmapped
+            reactant atoms in the template, not just those near the reaction center.
+            Defaults to True.
+
+    Returns:
+        ExtractedTemplate: A dictionary containing the extracted template with the
+            following keys:
+            - 'products': Product fragment SMARTS string
+            - 'reactants': Reactant fragment SMARTS string
+            - 'spectators': SMILES string of spectator molecules (reactants not
+              participating in the reaction)
+            - 'reaction_smarts': Complete retrosynthetic reaction SMARTS
+              (products>>reactants)
+            - 'separated_reaction_smarts': List of individual reaction SMARTS
+              components
+            - 'intra_only': Boolean indicating if the reaction is intramolecular
+            - 'dimer_only': Boolean indicating if the reaction involves dimerization
+            - 'reaction_id': The reaction identifier from the input
+            - 'necessary_reagent': SMILES fragment for unmapped product atoms that
+              must be supplied as reagents
+
+    Raises:
+        ValueError: Propagated from get_fragments_for_changed_atoms if fragment
+            extraction fails (caught internally and returns default template).
+
+    Note:
+        This function returns a default empty template (with empty strings and
+        False flags) if any of the following conditions occur:
+        - RDKit fails to parse reactants or products
+        - The number of unmapped product atoms exceeds the maximum threshold
+        - No reactant atoms are mapped to product atoms
+        - Molecule sanitization fails
+        - No atoms change between reactants and products
+        - The extracted reaction SMARTS fails RDKit validation
+        The returned template uses retro-synthetic direction (products>>reactants).
+    """
+    # Build a default template that preserves the reaction_id for early returns
+    default_template: ExtractedTemplate = {
+        **DEFAULT_EXTRACTED_TEMPLATE,
         "reaction_id": reaction["_id"],
-        "necessary_reagent": "",
     }
 
     reactants = mols_from_smiles_list(
@@ -1164,16 +1650,16 @@ def extract_from_reaction(
 
     # if rdkit cant understand molecule, return
     if None in reactants:
-        return default_extracted_template
+        return default_template
     if None in products:
-        return default_extracted_template
+        return default_template
 
     are_unmapped_product_atoms = False
     num_unmapped_product_atoms = 0
     unmapped_ids = []
     seen_atom_map_nums = set()
     for product in products:
-        prod_atoms = product.GetAtoms()
+        prod_atoms = list(product.GetAtoms())
         num_mapped_atoms = 0
         for atom in prod_atoms:
             map_num = atom.GetAtomMapNum()
@@ -1185,7 +1671,7 @@ def extract_from_reaction(
                 unmapped_ids.append(atom.GetIdx())
                 if num_unmapped_product_atoms > maximum_number_unmapped_product_atoms:
                     # Skip this example - too many unmapped product atoms!
-                    return default_extracted_template
+                    return default_template
         if num_mapped_atoms < len(prod_atoms):
             are_unmapped_product_atoms = True
 
@@ -1205,7 +1691,7 @@ def extract_from_reaction(
     )
     reactants = reactants_in_reaction
     if not reactants:
-        return default_extracted_template
+        return default_template
 
     # try to sanitize molecules
     try:
@@ -1219,17 +1705,16 @@ def extract_from_reaction(
             mol.UpdatePropertyCache()
     except Exception:
         # can't sanitize -> skip
-        return default_extracted_template
+        return default_template
 
     if None in reactants + products:
-        return default_extracted_template
+        return default_template
 
     extra_reactant_fragment = ""
     if are_unmapped_product_atoms:  # add fragment to template
         for product in products:
-            prod_atoms = product.GetAtoms()
             # Define new atom symbols for fragment with atom maps, generalizing fully
-            atom_symbols = ["[{}]".format(a.GetSymbol()) for a in prod_atoms]
+            atom_symbols = ["[{}]".format(a.GetSymbol()) for a in product.GetAtoms()]
             # And bond symbols...
             bond_symbols = ["~" for _ in product.GetBonds()]
             if unmapped_ids:
@@ -1249,15 +1734,15 @@ def extract_from_reaction(
 
         # Consolidate repeated fragments (stoichometry)
         extra_reactant_fragment = ".".join(
-            sorted(list(set(extra_reactant_fragment.split("."))))
+            sorted(set(extra_reactant_fragment.split(".")))
         )
 
     # Calculate changed atoms
-    changed_atoms, changed_atom_tags, err = get_changed_atoms(reactants, products)
+    _changed_atoms, changed_atom_tags, err = get_changed_atoms(reactants, products)
     if err:
-        return default_extracted_template
+        return default_template
     if not changed_atom_tags:
-        return default_extracted_template
+        return default_template
 
     try:
         # Get fragments for reactants
@@ -1281,7 +1766,7 @@ def extract_from_reaction(
         )
 
     except ValueError:
-        return default_extracted_template
+        return default_template
 
     # Put together and canonicalize (as best as possible)
     rxn_string = "{}>>{}".format(reactant_fragments, product_fragments)
@@ -1307,9 +1792,9 @@ def extract_from_reaction(
         rdChemReactions.ReactionFromSmarts(retro_canonical)
     )
     if rxn is None:
-        return default_extracted_template
+        return default_template
     if rxn.Validate()[1] != 0:
-        return default_extracted_template
+        return default_template
 
     template: ExtractedTemplate = {
         "products": products_string,
@@ -1337,14 +1822,52 @@ def extract_from_reaction_smiles(
     reaction_id: Optional[str | int] = None,
 ) -> ExtractedTemplate:
     """
-    Extract a reaction template from a reaction SMILES string.
+    Extract a retrosynthetic reaction template from a reaction SMILES string.
+
+    This function parses a reaction SMILES string and extracts a template representing
+    the chemical transformation. It is a convenience wrapper around extract_from_reaction
+    that handles the SMILES parsing and delegates to the core extraction logic.
 
     Args:
-        rxn_smiles: Reaction SMILES string in the format "reactants>>products"
-        reaction_id: Optional reaction ID
+        rxn_smiles (str): Reaction SMILES string in the format "reactants>>products".
+            The reactants and products should have atom mapping numbers for template
+            extraction to work correctly.
+        no_special_groups (bool): If True, disable special functional group handling
+            during fragment extraction. Defaults to False.
+        radius (int): Number of bonds to expand around changed atoms when extracting
+            fragments. A larger radius captures more context. Defaults to 1.
+        use_stereochemistry (bool): If True, include stereochemical information in
+            the extracted template. Defaults to True.
+        canonicalize_template (bool): If True, canonicalize the reaction SMARTS
+            string for consistent representation. Defaults to True.
+        maximum_number_unmapped_product_atoms (int): Maximum allowed number of
+            unmapped atoms in the products. Reactions exceeding this limit are
+            skipped. Defaults to 5.
+        include_all_unmapped_reactant_atoms (bool): If True, include all unmapped
+            reactant atoms in the template, not just those near the reaction center.
+            Defaults to True.
+        reaction_id (Optional[str | int]): Optional identifier for the reaction.
+            This will be included in the returned template.
 
     Returns:
-        ExtractedTemplate: The extracted template
+        ExtractedTemplate: A dictionary containing the extracted template with the
+            following keys:
+            - 'products': Product fragment SMARTS string
+            - 'reactants': Reactant fragment SMARTS string
+            - 'spectators': SMILES string of spectator molecules (reactants not
+              participating in the reaction)
+            - 'reaction_smarts': Complete retrosynthetic reaction SMARTS
+              (products>>reactants)
+            - 'separated_reaction_smarts': List of individual reaction SMARTS
+              components
+            - 'intra_only': Boolean indicating if the reaction is intramolecular
+            - 'dimer_only': Boolean indicating if the reaction involves dimerization
+            - 'reaction_id': The reaction identifier from the input
+            - 'necessary_reagent': SMILES fragment for unmapped product atoms that
+              must be supplied as reagents
+
+    Raises:
+        ValueError: If the reaction SMILES does not contain exactly one '>>' separator.
     """
     if len(rxn_smiles.split(">>")) != 2:
         raise ValueError("Reaction SMILES must contain exactly one >>")
@@ -1354,6 +1877,7 @@ def extract_from_reaction_smiles(
     reaction_dict: rdChiralTemplateExtractInput = {
         "reactants": reactants,
         "products": products,
+        "spectators": "",
         "_id": reaction_id,
     }
 

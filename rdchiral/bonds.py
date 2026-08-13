@@ -1,6 +1,6 @@
 from typing import Dict, Iterator, List, Optional, Set, Tuple
 
-import rdkit.Chem as Chem
+from rdkit import Chem
 from rdkit.Chem.rdchem import BondDir, BondType
 
 BondDirOpposite = {
@@ -63,7 +63,7 @@ def enumerate_possible_cistrans_defs(
     using either atom order. e.g.,
 
     A1         B1
-       \      /
+       \\      /
          C = C
        /      \
     A2         B2
@@ -89,10 +89,17 @@ def enumerate_possible_cistrans_defs(
     the sixteen possible ways that a reactant could match it.
 
     Args:
-        template_r: reactant template
+        template_r (Chem.Mol): Reactant template molecule with atom-map numbers.
     
     Returns:
-        (dict, set): Returns required_bond_defs and required_bond_defs_coreatoms
+        Tuple[Dict[Tuple[int, int, int, int], Tuple[BondDir, BondDir]], Set[Tuple[int, int]]]:
+            - First element (required_bond_defs): Mapping from
+              (a1, a2, a3, a4) atom-map-number tuples to (BondDir, BondDir) pairs,
+              enumerating all valid ways to specify the cis/trans chirality of
+              double bonds in the template.
+            - Second element (required_bond_defs_coreatoms): Set of
+              (mapnum1, mapnum2) pairs identifying the core double-bond atoms
+              for which cis/trans specification was possible.
     """
 
     required_bond_defs: Dict[Tuple[int, int, int, int], Tuple[BondDir, BondDir]] = {}
@@ -302,7 +309,15 @@ def get_atoms_across_double_bonds(
         mol (rdkit.Chem.rdchem.Mol): RDKit molecule
 
     Returns:
-        list: atoms_across_double_bonds
+        List[Tuple[Tuple[int, int, int, int], Tuple[BondDir, BondDir], bool]]:
+            A list of cis/trans specifications, where each element is a tuple of
+            (mapnums, dirs, is_implicit):
+            - mapnums (Tuple[int, int, int, int]): Atom-map numbers (a1, a2, a3, a4)
+              where (a1, a2) defines the front single-bond direction and (a3, a4)
+              defines the back single-bond direction.
+            - dirs (Tuple[BondDir, BondDir]): Bond directions for the front and back.
+            - is_implicit (bool): True if the cis/trans specification was inferred
+              from ring membership rather than explicitly set.
     """
     atoms_across_double_bonds: List[
         Tuple[Tuple[int, int, int, int], Tuple[BondDir, BondDir], bool]
@@ -334,12 +349,12 @@ def get_atoms_across_double_bonds(
         bab = None
         bbb = None
 
-        def _bab_generator() -> Iterator[Chem.Bond]:
-            for z in ba.GetBonds():
+        def _bab_generator(atom: Chem.Atom) -> Iterator[Chem.Bond]:
+            for z in atom.GetBonds():
                 if z.GetBondType() != BondType.DOUBLE:
                     yield z
 
-        for bab in _bab_generator():
+        for bab in _bab_generator(ba):
             if bab.GetBondDir() != BondDir.NONE:
                 front_mapnums = (
                     bab.GetBeginAtom().GetAtomMapNum(),
@@ -348,12 +363,12 @@ def get_atoms_across_double_bonds(
                 front_dir = bab.GetBondDir()
                 break
 
-        def _bbb_generator() -> Iterator[Chem.Bond]:
-            for z in bb.GetBonds():
+        def _bbb_generator(atom: Chem.Atom) -> Iterator[Chem.Bond]:
+            for z in atom.GetBonds():
                 if z.GetBondType() != BondType.DOUBLE:
                     yield z
 
-        for bbb in _bbb_generator():
+        for bbb in _bbb_generator(bb):
             if bbb.GetBondDir() != BondDir.NONE:
                 back_mapnums = (
                     bbb.GetBeginAtom().GetAtomMapNum(),
@@ -421,7 +436,7 @@ def get_atoms_across_double_bonds(
 def restore_bond_stereo_to_sp2_atom(
     a: Chem.Atom, bond_dirs_by_mapnum: Dict[Tuple[int, int], BondDir]
 ) -> bool:
-    """
+    r"""
     Copy over single-bond directions (ENDUPRIGHT, ENDDOWNRIGHT) to
     the single bonds attached to some double-bonded atom, a
 
@@ -432,13 +447,14 @@ def restore_bond_stereo_to_sp2_atom(
 
     Args:
         a (rdkit.Chem.rdchem.Atom): RDKit atom with double bond
-        bond_dirs_by_mapnum - dictionary of (begin_mapnum, end_mapnum): bond_dir
-            that defines if a bond should be ENDUPRIGHT or ENDDOWNRIGHT. The reverse
-            key is also included with the reverse bond direction. If the source
-            molecule did not have a specified chirality at this double bond, then
-            the mapnum tuples will be missing from the dict
+        bond_dirs_by_mapnum (Dict[Tuple[int, int], BondDir]): Dictionary of
+            (begin_mapnum, end_mapnum) -> bond_dir that defines if a bond should
+            be ENDUPRIGHT or ENDDOWNRIGHT. The reverse key is also included with
+            the reverse bond direction. If the source molecule did not have a
+            specified chirality at this double bond, then the mapnum tuples will
+            be missing from the dict.
     Returns:
-        bool: Returns Trueif a bond direction was copied
+        bool: Returns True if a bond direction was copied
     """
 
     for bond_to_spec in a.GetBonds():
@@ -470,13 +486,15 @@ def restore_bond_stereo_to_sp2_atom(
                 needs_inversion = True
 
             for (i, j), bond_dir in bond_dirs_by_mapnum.items():
-                if bond_dir != BondDir.NONE:
-                    if i == bond_to_spec.GetBeginAtom().GetAtomMapNum():
-                        if needs_inversion:
-                            bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
-                        else:
-                            bond_to_spec.SetBondDir(bond_dir)
-                        return True
+                if (
+                    bond_dir != BondDir.NONE
+                    and i == bond_to_spec.GetBeginAtom().GetAtomMapNum()
+                ):
+                    if needs_inversion:
+                        bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
+                    else:
+                        bond_to_spec.SetBondDir(bond_dir)
+                    return True
 
     elif a.GetDegree() == 3:
         # If we lost the branch defining stereochem, it must have been replaced
@@ -492,13 +510,15 @@ def restore_bond_stereo_to_sp2_atom(
                 needs_inversion = False
 
             for (i, j), bond_dir in bond_dirs_by_mapnum.items():
-                if bond_dir != BondDir.NONE:
-                    if i == bond_to_spec.GetBeginAtom().GetAtomMapNum():
-                        if needs_inversion:
-                            bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
-                        else:
-                            bond_to_spec.SetBondDir(bond_dir)
-                        return True
+                if (
+                    bond_dir != BondDir.NONE
+                    and i == bond_to_spec.GetBeginAtom().GetAtomMapNum()
+                ):
+                    if needs_inversion:
+                        bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
+                    else:
+                        bond_to_spec.SetBondDir(bond_dir)
+                    return True
 
     return False
 
@@ -511,12 +531,13 @@ def correct_conjugated(
     corrupted for a conjugated system, where parts of the directions were specified by the template
     and parts were copied from the reactants.
     Args:
-        initial_bond_dirs - dictionary of (begin_mapnum, end_mapnum): bond_dir
-            that defines if a bond is ENDUPRIGHT or ENDDOWNRIGHT. The reverse
-            key is also included with the reverse bond direction. If the source
-            molecule did not have a specified chirality at this double bond, then
-            the mapnum tuples will be missing from the dict
-        outcome (rdkit.Chem.rdChem.Mol): RDKit molecule
+        initial_bond_dirs (Dict[Tuple[int, int], BondDir]): Dictionary of
+            (begin_mapnum, end_mapnum) -> bond_dir that defines if a bond is
+            ENDUPRIGHT or ENDDOWNRIGHT. The reverse key is also included with
+            the reverse bond direction. If the source molecule did not have a
+            specified chirality at this double bond, then the mapnum tuples
+            will be missing from the dict.
+        outcome (rdkit.Chem.rdchem.Mol): RDKit molecule
     Returns:
         bool: Returns True if a conjugated system was corrected
     """

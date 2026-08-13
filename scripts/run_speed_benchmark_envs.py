@@ -1,3 +1,5 @@
+"""Orchestrate speed benchmarks across multiple rdchiral environments."""
+
 import argparse
 import os
 import random
@@ -5,17 +7,53 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 
 def _run(
     cmd: list[str], *, env: dict[str, str] | None = None, cwd: Path | None = None
 ) -> None:
+    """
+    Run a subprocess command, printing it first and raising on failure.
+
+    Args:
+        cmd (list[str]): Command and arguments to execute.
+        env (dict[str, str] | None): Optional environment variables for the subprocess.
+            If None, inherits the current process environment.
+        cwd (Path | None): Optional working directory for the subprocess.
+    """
     printable = " ".join(cmd)
     print(f"\n$ {printable}")
     subprocess.run(cmd, check=True, env=env, cwd=str(cwd) if cwd is not None else None)
 
 
+def _check_uv() -> None:
+    """
+    Verify that ``uv`` is available on PATH.
+
+    Raises:
+        SystemExit: If ``uv`` is not found, with instructions for installation.
+    """
+    if shutil.which("uv") is None:
+        raise SystemExit(
+            "'uv' is required but was not found on PATH.\n"
+            "Install it with one of:\n"
+            "  curl -LsSf https://astral.sh/uv/install.sh | sh\n"
+            "  pip install uv\n"
+            "See https://docs.astral.sh/uv/ for more information."
+        )
+
+
 def _venv_python(venv_dir: Path) -> Path:
+    """
+    Return the Python executable path for a virtual environment.
+
+    Args:
+        venv_dir (Path): Root directory of the virtual environment.
+
+    Returns:
+        Path: Path to the Python executable, accounting for platform differences.
+    """
     if os.name == "nt":
         return venv_dir / "Scripts" / "python.exe"
     return venv_dir / "bin" / "python"
@@ -127,6 +165,15 @@ def _build_conda_env(*, env_dir: Path, reinstall: bool) -> None:
 def _build_env(
     *, repo_root: Path, venv_dir: Path, use_mypyc: bool, reinstall: bool
 ) -> None:
+    """
+    Build a uv virtual environment and install the local rdchiral package.
+
+    Args:
+        repo_root (Path): Path to the rdchiral repository root for installation.
+        venv_dir (Path): Target directory for the virtual environment.
+        use_mypyc (bool): If True, set RDCHIRAL_USE_MYPYC=1 to enable mypyc compilation.
+        reinstall (bool): If True, delete and recreate the venv if it already exists.
+    """
     if reinstall and venv_dir.exists():
         shutil.rmtree(venv_dir)
 
@@ -160,6 +207,15 @@ def _build_env(
 
 
 def _verify_import(*, python: Path) -> None:
+    """
+    Verify that rdchiral can be imported from the given Python executable.
+
+    Runs a temporary Python process that imports rdchiral.main and prints its
+    file path, to confirm the correct package is installed.
+
+    Args:
+        python (Path): Path to the Python executable to test.
+    """
     with tempfile.TemporaryDirectory(prefix="rdchiral_importcheck_") as d:
         tmpdir = Path(d)
         _run(
@@ -179,6 +235,21 @@ def _run_benchmark(
     benchmark_path: Path,
     extra_args: list[str] | None = None,
 ) -> None:
+    """
+    Run the benchmark script in an isolated temporary directory.
+
+    Copies the benchmark script to a temp directory and runs it with the given
+    Python executable, passing RDCHIRAL_REPO_ROOT as an environment variable
+    so the script can locate data files. This avoids importing the in-tree
+    rdchiral source instead of the installed package.
+
+    Args:
+        python (Path): Path to the Python executable to run the benchmark with.
+        repo_root (Path): Path to the rdchiral repository root.
+        benchmark_path (Path): Path to the benchmark script to run.
+        extra_args (list[str] | None): Additional command-line arguments to pass
+            to the benchmark script.
+    """
     # Critical: run from a directory that does NOT contain the repo to avoid importing
     # the in-tree rdchiral/*.py instead of the installed package.
     with tempfile.TemporaryDirectory(prefix="rdchiral_bench_") as d:
@@ -195,16 +266,24 @@ def _run_benchmark(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    """
+    Orchestrate speed benchmarks across multiple rdchiral environments.
+
+    Creates and manages virtual environments for pure-Python, mypyc-compiled,
+    original rdchiral (from PyPI), and rdchiral_cpp (from conda-forge) builds.
+    Runs the speed benchmark script in each environment and optionally
+    randomizes the execution order.
+
+    Returns:
+        int: 0 on success.
+    """
+    parser = argparse.ArgumentParser(
+        description="Orchestrate speed benchmarks across multiple rdchiral environments."
+    )
     parser.add_argument(
         "--benchmark",
         default="speed_benchmark_script.py",
         help="Path to the benchmark script (default: speed_benchmark_script.py)",
-    )
-    parser.add_argument(
-        "--save-file-prefix",
-        default="true",
-        help="Optional prefix forwarded to the benchmark script for naming saved files",
     )
     parser.add_argument(
         "--venv-py",
@@ -237,7 +316,34 @@ def main() -> int:
         default=None,
         help="Randomize the order of environment benchmarks (optionally reproducible with a seed)",
     )
+    parser.add_argument(
+        "--skip-pure-python",
+        action="store_true",
+        help="Skip the pure-Python environment",
+    )
+    parser.add_argument(
+        "--skip-mypyc",
+        action="store_true",
+        help="Skip the mypyc-compiled environment",
+    )
+    parser.add_argument(
+        "--skip-original",
+        action="store_true",
+        help="Skip the original rdchiral (from git) environment",
+    )
+    parser.add_argument(
+        "--skip-cpp",
+        action="store_true",
+        help="Skip the rdchiral_cpp (conda-forge) environment",
+    )
+    parser.add_argument(
+        "--original-rdchiral-spec",
+        default="git+https://github.com/connorcoley/rdchiral.git",
+        help="pip install spec for the original rdchiral environment (default: git+https://github.com/connorcoley/rdchiral.git)",
+    )
     args = parser.parse_args()
+
+    _check_uv()
 
     repo_root = Path(__file__).resolve().parent.parent
     benchmark_path = (repo_root / "scripts" / args.benchmark).resolve()
@@ -261,9 +367,11 @@ def main() -> int:
         print("--- Import verification (pure python) ---")
         _verify_import(python=py_python)
         print("--- Running benchmark (pure python) ---")
-        extra_args: list[str] = ["--lazy-init-possible"]
-        if args.save_file_prefix is not None:
-            extra_args.extend(["--save-file-prefix", "pure_python"])
+        extra_args: list[str] = [
+            "--lazy-init-possible",
+            "--save-file-prefix",
+            "pure_python",
+        ]
         _run_benchmark(
             python=py_python,
             repo_root=repo_root,
@@ -283,9 +391,7 @@ def main() -> int:
         print("--- Import verification (mypyc) ---")
         _verify_import(python=mypyc_python)
         print("--- Running benchmark (mypyc) ---")
-        extra_args: list[str] = ["--lazy-init-possible"]
-        if args.save_file_prefix is not None:
-            extra_args.extend(["--save-file-prefix", "mypyc"])
+        extra_args: list[str] = ["--lazy-init-possible", "--save-file-prefix", "mypyc"]
         _run_benchmark(
             python=mypyc_python,
             repo_root=repo_root,
@@ -296,7 +402,7 @@ def main() -> int:
     def _env_original() -> None:
         print("\n=== Building original rdchiral environment ===\n")
         _build_env_from_url(
-            install_spec="git+https://github.com/connorcoley/rdchiral.git",
+            install_spec=args.original_rdchiral_spec,
             venv_dir=venv_default,
             reinstall=args.reinstall,
         )
@@ -304,9 +410,7 @@ def main() -> int:
         print("--- Import verification (original rdchiral) ---")
         _verify_import(python=default_python)
         print("--- Running benchmark (original rdchiral) ---")
-        extra_args: list[str] = []
-        if args.save_file_prefix is not None:
-            extra_args.extend(["--save-file-prefix", "original"])
+        extra_args: list[str] = ["--save-file-prefix", "original"]
         _run_benchmark(
             python=default_python,
             repo_root=repo_root,
@@ -319,9 +423,7 @@ def main() -> int:
         _build_conda_env(env_dir=venv_cpp, reinstall=args.reinstall)
         cpp_python = _conda_python(venv_cpp)
         print("--- Running benchmark (rdchiral_cpp) ---")
-        extra_args = ["--cpp"]
-        if args.save_file_prefix is not None:
-            extra_args.extend(["--save-file-prefix", "cpp"])
+        extra_args = ["--cpp", "--save-file-prefix", "cpp"]
         _run_benchmark(
             python=cpp_python,
             repo_root=repo_root,
@@ -329,9 +431,21 @@ def main() -> int:
             extra_args=extra_args,
         )
 
-    env_steps = [_env_pure_python, _env_mypyc, _env_original, _env_cpp]
+    env_steps: list[tuple[str, Callable[[], None]]] = []
+    if not args.skip_pure_python:
+        env_steps.append(("pure_python", _env_pure_python))
+    if not args.skip_mypyc:
+        env_steps.append(("mypyc", _env_mypyc))
+    if not args.skip_original:
+        env_steps.append(("original", _env_original))
+    if not args.skip_cpp:
+        env_steps.append(("cpp", _env_cpp))
+
+    if not env_steps:
+        raise SystemExit("All environments skipped. Nothing to do.")
+
     random.Random(args.shuffle_seed).shuffle(env_steps)
-    for step in env_steps:
+    for _, step in env_steps:
         step()
 
     return 0

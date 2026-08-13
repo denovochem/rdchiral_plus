@@ -2,7 +2,7 @@ import re
 from itertools import chain
 from typing import Dict, Set, Tuple
 
-import rdkit.Chem as Chem
+from rdkit import Chem
 
 
 def canonicalize_outcome_smiles(smiles: str, ensure: bool = True) -> str:
@@ -69,8 +69,7 @@ def combine_enantiomers_into_racemic(
             smiles_inv = "%s@%s" % (smiles[: match.start()], smiles[match.end() :])
             if smiles_inv in final_outcomes:
                 original_smiles = smiles
-                if smiles in final_outcomes:
-                    final_outcomes.remove(smiles)
+                final_outcomes.discard(smiles)
                 final_outcomes.remove(smiles_inv)
                 # Re-parse smiles so that hydrogens can become implicit
                 smiles = smiles[: match.start()] + smiles[match.end() :]

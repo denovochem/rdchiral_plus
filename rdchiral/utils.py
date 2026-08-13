@@ -214,9 +214,8 @@ def atoms_are_different(
         bool: True if any checked property differs, otherwise False.
     """
 
-    if not skip_smarts_check:
-        if atom1.GetSmarts() != atom2.GetSmarts():
-            return True  # should be very general
+    if not skip_smarts_check and atom1.GetSmarts() != atom2.GetSmarts():
+        return True  # should be very general
 
     if atom1.GetAtomicNum() != atom2.GetAtomicNum():
         return True  # must be true for atom mapping
@@ -253,10 +252,7 @@ def atoms_are_different(
     if bonds1 != bonds2:
         return True
 
-    if check_local_stereo and has_local_stereo_changed(atom1, atom2):
-        return True
-
-    return False
+    return check_local_stereo and has_local_stereo_changed(atom1, atom2)
 
 
 def strip_map_numbers_from_smiles(smiles: str) -> str:

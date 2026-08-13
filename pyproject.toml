@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
  
 [project]
 name = "rdchiral_plus"
-version = "0.4.0"
+version = "0.5.0"
 description = "Wrapper for RDKit's RunReactants to improve stereochemistry handling"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,16 +34,6 @@ Issues = "https://github.com/denovochem/rdchiral_plus/issues"
 where = ["."]
 include = ["rdchiral*"]
 
-[tool.cibuildwheel]
-build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
-skip = "pp* *-musllinux_* *-win32 *_i686"
-
-[tool.cibuildwheel.linux]
-manylinux-x86_64-image = "manylinux_2_28"
-manylinux-aarch64-image = "manylinux_2_28"
-
-[tool.cibuildwheel.environment]
-RDCHIRAL_USE_MYPYC = "1"
 
 [dependency-groups]
 dev = [
@@ -62,6 +52,14 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "rdkit.*"
 follow_imports = "skip"
+
+[tool.ruff.lint]
+ignore = ["UP", "BLE001"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/speed_benchmark_script.py" = ["E402"]
+"tests/unit/test_benchmark_utils.py" = ["E402"]
+"examples/*.ipynb" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = [

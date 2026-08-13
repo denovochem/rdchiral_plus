@@ -54,33 +54,87 @@ The default benchmark script is `scripts/speed_benchmark_script.py`.
 
 The script reports timings for:
 
-- Template initialization (building `rdchiralReaction` objects).
-- Reactant initialization (building `rdchiralReactants` objects).
-- Template application (`rdchiralRunText`, `rdchiralRun`, `rdchiralRun_keep_mapnums`, `rdchiralRun_return_mapped_keep_mapnums`).
-- Template extraction (`extract_from_reaction`).
+- Template initialization (building `rdchiralReaction` objects from 1000 templates).
+- Reactant initialization (building `rdchiralReactants` objects from 10000 reactant SMILES).
+- Template application via `rdchiralRunText` (100 templates x 100 SMILES = 10,000 applications).
+- Template application via `rdchiralRun` (1000 templates x 1000 SMILES = 1,000,000 applications).
+- Template application via `rdchiralRun` with `return_mapped=True` (1,000,000 applications).
+- Template application via `rdchiralRun` with `return_mapped=True, keep_mapnums=True` (1,000,000 applications).
+- Template extraction via `extract_from_reaction` (50,016 mapped reactions).
 
-## Benchmark 1: 1,000,000 template applications
+## Benchmark 1: Template initialization
 
-This benchmark consists of applying 1000 templates to 1000 reactant SMILES for a total of 1,000,000 applications.
+Building `rdchiralReaction` objects from 1000 templates.
 
-| env | reactants_init | reactants_init_ratio | templates_init | templates_init_ratio | application | application_ratio |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| orig | 0.560 (0.050) | 1.000 | 0.608 (0.035) | 1.000 | 118.250 (2.837) | 1.000 |
-| rdchiral_plus | 0.551 (0.077) | 1.016 | 0.739 (0.087) | 0.822 | 39.650 (0.169) | 2.982 |
-| rdchiral_plus_mypyc | 0.589 (0.025) | 0.950 | 0.733 (0.014) | 0.829 | 38.847 (1.501) | 3.044 |
-| cpp | 0.163 (0.033) | 3.429 | 0.064 (0.010) | 9.500 | 44.793 (1.593) | 2.640 |
+| env | time (s) | ratio |
+| --- | :---: | :---: |
+| orig | 0.659 (0.084) | 1.000 |
+| rdchiral_plus | 0.022 (0.006) | 29.631 |
+| rdchiral_plus_mypyc | 0.029 (0.003) | 22.892 |
+| cpp | 0.157 (0.052) | 4.190 |
 
-### Notes
+## Benchmark 2: Reactant initialization
 
-- `reactants_init` includes loading and preprocessing the reactant set.
-- `templates_init` includes loading and preprocessing the template set.
-- `application` is the end-to-end runtime for performing the 1,000,000 applications.
+Building `rdchiralReactants` objects from 10000 reactant SMILES.
 
-## Benchmark 2: product-forming applications
+| env | time (s) | ratio |
+| --- | :---: | :---: |
+| orig | 6.543 (0.476) | 1.000 |
+| rdchiral_plus | 4.252 (0.530) | 1.539 |
+| rdchiral_plus_mypyc | 4.458 (0.044) | 1.468 |
+| cpp | 1.896 (0.169) | 3.451 |
 
-This benchmark consists of applying 10,000 template reactant applications, all of which result in products with the original rdchiral library.
+## Benchmark 3: rdchiralRunText
 
-## Benchmark 3: template extraction
+Applying 100 templates to 100 reactant SMILES via `rdchiralRunText` for a total of 10,000 applications.
 
-This benchmark consists of extracting 10,000 templates from atom mapped reactions.
- 
+| env | time (s) | ratio |
+| --- | :---: | :---: |
+| orig | 134.471 (6.558) | 1.000 |
+| rdchiral_plus | 26.538 (5.134) | 5.067 |
+| rdchiral_plus_mypyc | 27.198 (1.685) | 4.944 |
+| cpp | 30.906 (0.908) | 4.351 |
+
+## Benchmark 4: rdchiralRun
+
+Applying 1000 templates to 1000 reactant SMILES via `rdchiralRun` for a total of 1,000,000 applications.
+
+| env | time (s) | ratio |
+| --- | :---: | :---: |
+| orig | 129.738 (0.600) | 1.000 |
+| rdchiral_plus | 71.490 (5.881) | 1.815 |
+| rdchiral_plus_mypyc | 72.052 (2.138) | 1.801 |
+| cpp | 52.891 (0.677) | 2.453 |
+
+## Benchmark 5: rdchiralRun with return_mapped=True
+
+Applying 1000 templates to 1000 reactant SMILES via `rdchiralRun` with `return_mapped=True` for a total of 1,000,000 applications.
+
+| env | time (s) | ratio |
+| --- | :---: | :---: |
+| orig | 132.008 (2.064) | 1.000 |
+| rdchiral_plus | 73.715 (1.796) | 1.791 |
+| rdchiral_plus_mypyc | 75.263 (2.950) | 1.754 |
+| cpp | 54.914 (0.436) | 2.404 |
+
+## Benchmark 6: rdchiralRun with return_mapped=True, keep_mapnums=True
+
+Applying 1000 templates to 1000 reactant SMILES via `rdchiralRun` with `return_mapped=True` and `keep_mapnums=True` for a total of 1,000,000 applications.
+
+| env | time (s) | ratio |
+| --- | :---: | :---: |
+| orig | 121.588 (0.332) | 1.000 |
+| rdchiral_plus | 68.792 (2.039) | 1.767 |
+| rdchiral_plus_mypyc | 69.108 (2.267) | 1.759 |
+| cpp | not supported | — |
+
+## Benchmark 7: Template extraction
+
+Extracting templates from 50,016 atom-mapped reactions via `extract_from_reaction`.
+
+| env | time (s) | ratio |
+| --- | :---: | :---: |
+| orig | 268.668 (1.878) | 1.000 |
+| rdchiral_plus | 153.925 (12.242) | 1.745 |
+| rdchiral_plus_mypyc | 141.834 (3.408) | 1.894 |
+| cpp | 86.310 (5.668) | 3.113 |

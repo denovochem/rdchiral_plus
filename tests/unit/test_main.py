@@ -1,7 +1,13 @@
 import pytest
 from rdkit import Chem
 
-from rdchiral.main import deduplicate_outcomes_with_smiles, rdchiralRunText
+from rdchiral.main import (
+    deduplicate_outcomes_with_smiles,
+    rdchiralReactants,
+    rdchiralReaction,
+    rdchiralRun,
+    rdchiralRunText,
+)
 
 
 def _maps_in_smiles(smiles: str) -> set[int]:
@@ -107,3 +113,26 @@ def test_rdchiralRunText_simple_substitution_produces_expected_product_smiles(
     assert expected in {
         Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True) for s in outcomes
     }
+
+
+def test_rdchiralRun_max_products_enforced_across_depth_levels():
+    """max_products must be enforced as a hard limit across depth levels.
+
+    This is a regression test for a bug where the max_products check only
+    broke the inner parent loop but the outer depth loop continued to the
+    next level, adding more products beyond the limit.
+    """
+    # Nitration reduction template that can match multiple times on a
+    # polysubstituted aromatic ring, producing products at multiple depths.
+    smarts = "[c:1]-[N;H0;D3;+1:2](-[O;H0;D1;-1])=[O;H0;D1;+0]>>[c;+0:1]-[N;H2;D1;+0:2]"
+    smiles = "Cc1c(cc(cc1[N+](=O)[O-])[N+](=O)[O-])[N+](=O)[O-]"
+
+    rxn = rdchiralReaction(smarts)
+    reactants = rdchiralReactants(smiles)
+
+    max_products = 2
+    outcomes = rdchiralRun(rxn, reactants, max_depth=3, max_products=max_products)
+
+    assert len(outcomes) <= max_products, (
+        f"Expected at most {max_products} products, got {len(outcomes)}: {outcomes}"
+    )
