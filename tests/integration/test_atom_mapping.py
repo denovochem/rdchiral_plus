@@ -25,7 +25,7 @@ _ATOM_MAPPING_CASES = _load_atom_mapping_cases()
 
 def canonicalize_outcomes(outcomes):
     """Convert all SMILES in a list of outcomes to the canonical form"""
-    return list(map(lambda x: Chem.CanonSmiles(x), outcomes))
+    return [Chem.CanonSmiles(x) for x in outcomes]
 
 
 @pytest.mark.slow

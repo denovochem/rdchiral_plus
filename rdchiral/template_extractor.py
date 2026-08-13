@@ -1130,17 +1130,19 @@ def get_strict_smarts_for_atom(
 
     # Explicit stereochemistry - *before* H
     if use_stereochemistry:
-        if atom.GetChiralTag() != Chem.rdchem.ChiralType.CHI_UNSPECIFIED:
-            if "@" not in symbol:
-                # Be explicit when there is a tetrahedral chiral tag
-                if atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW:
-                    tag = "@"
-                elif atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW:
-                    tag = "@@"
-                if ":" in symbol:
-                    symbol = symbol.replace(":", ";{}:".format(tag))
-                else:
-                    symbol = symbol.replace("]", ";{}]".format(tag))
+        if (
+            atom.GetChiralTag() != Chem.rdchem.ChiralType.CHI_UNSPECIFIED
+            and "@" not in symbol
+        ):
+            # Be explicit when there is a tetrahedral chiral tag
+            if atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW:
+                tag = "@"
+            elif atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW:
+                tag = "@@"
+            if ":" in symbol:
+                symbol = symbol.replace(":", ";{}:".format(tag))
+            else:
+                symbol = symbol.replace("]", ";{}]".format(tag))
     else:
         symbol = symbol.replace("@@", "").replace("@", "")
 
@@ -1282,11 +1284,14 @@ def get_fragments_for_changed_atoms(
                     continue
 
         # Fully define leaving groups and this molecule participates?
-        if include_all_unmapped_reactant_atoms and len(atoms_to_use) > 0:
-            if category == "reactants":
-                for atom in mol.GetAtoms():
-                    if not atom.GetAtomMapNum():
-                        atoms_to_use.append(atom.GetIdx())
+        if (
+            include_all_unmapped_reactant_atoms
+            and len(atoms_to_use) > 0
+            and category == "reactants"
+        ):
+            for atom in mol.GetAtoms():
+                if not atom.GetAtomMapNum():
+                    atoms_to_use.append(atom.GetIdx())
 
         # Check neighbors (any atom)
         for k in range(radius):
@@ -1353,17 +1358,14 @@ def get_fragments_for_changed_atoms(
                 allBondsExplicit=True,
             )
         except RuntimeError:
-            try:
-                this_fragment = rdmolfiles.MolFragmentToSmiles(
-                    mol_without_map_nums,
-                    atoms_to_use,
-                    atomSymbols=symbols,
-                    allHsExplicit=True,
-                    isomericSmiles=False,
-                    allBondsExplicit=True,
-                )
-            except RuntimeError as e2:
-                raise e2
+            this_fragment = rdmolfiles.MolFragmentToSmiles(
+                mol_without_map_nums,
+                atoms_to_use,
+                atomSymbols=symbols,
+                allHsExplicit=True,
+                isomericSmiles=False,
+                allBondsExplicit=True,
+            )
 
         if use_stereochemistry:
             this_fragment_mol = rdmolfiles.MolFromSmarts(this_fragment)
@@ -1733,11 +1735,11 @@ def extract_from_reaction(
 
         # Consolidate repeated fragments (stoichometry)
         extra_reactant_fragment = ".".join(
-            sorted(list(set(extra_reactant_fragment.split("."))))
+            sorted(set(extra_reactant_fragment.split(".")))
         )
 
     # Calculate changed atoms
-    changed_atoms, changed_atom_tags, err = get_changed_atoms(reactants, products)
+    _changed_atoms, changed_atom_tags, err = get_changed_atoms(reactants, products)
     if err:
         return default_template
     if not changed_atom_tags:

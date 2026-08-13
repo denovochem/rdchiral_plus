@@ -232,6 +232,7 @@ def _run_roundtrip_check(
             text=True,
             cwd=tmpdir,
             env=env,
+            check=False,
         )
         if result.returncode != 0:
             print(f"Error running check script: {result.stderr}")

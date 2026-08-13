@@ -1,4 +1,4 @@
-import rdkit.Chem as Chem
+from rdkit import Chem
 from rdkit.Chem.rdchem import BondDir
 
 from rdchiral.bonds import (

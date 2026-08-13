@@ -8,6 +8,7 @@ roundtrips is printed to stdout.
 """
 
 import argparse
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -128,7 +129,7 @@ def main() -> None:
                         break
 
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("Roundtrip check failed", exc_info=True)
 
     print(consistent)
 

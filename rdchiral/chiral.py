@@ -37,9 +37,7 @@ def template_atom_could_have_been_tetra(
     """
 
     if a.HasProp("tetra_possible"):
-        if a.GetBoolProp("tetra_possible"):
-            return True
-        return False
+        return bool(a.GetBoolProp("tetra_possible"))
     if a.GetDegree() < 3 or (
         a.GetDegree() == 3
         and "H" not in a.GetSmarts()
@@ -72,11 +70,12 @@ def copy_chirality(a_src: Chem.Atom, a_new: Chem.Atom) -> None:
     # Not possible to be a tetrahedral center anymore?
     if a_new.GetDegree() < 3:
         return
-    if a_new.GetDegree() == 3 and any(
-        b.GetBondType() != BondType.SINGLE for b in a_new.GetBonds()
+    if (
+        a_new.GetDegree() == 3
+        and any(b.GetBondType() != BondType.SINGLE for b in a_new.GetBonds())
+        and a_new.GetAtomicNum() not in _LONE_PAIR_STEREO_ATOMS
     ):
-        if a_new.GetAtomicNum() not in _LONE_PAIR_STEREO_ATOMS:
-            return
+        return
 
     a_new.SetChiralTag(a_src.GetChiralTag())
 

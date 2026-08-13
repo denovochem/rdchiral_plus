@@ -462,11 +462,9 @@ def rdchiralRun(
             break
 
     if not keep_mapnums:
-        final_smiles_list = list(
-            set([unmapped for unmapped, _ in all_products.values()])
-        )
+        final_smiles_list = list({unmapped for unmapped, _ in all_products.values()})
     else:
-        final_smiles_list = list(set([mapped for mapped in all_products]))
+        final_smiles_list = list({mapped for mapped in all_products})
 
     _, combined_enantiomers_dict = combine_enantiomers_into_racemic(
         set(final_smiles_list)
@@ -721,7 +719,7 @@ def return_non_stereo_outcome_early(
     if keep_mapnums:
         return None
 
-    if set([len(outcome) for outcome in outcomes]) != {1}:
+    if {len(outcome) for outcome in outcomes} != {1}:
         return None
 
     final_outcomes_list: List[str] = []
@@ -980,8 +978,8 @@ def validate_chiral_match(
     """
     prev: Optional[int] = None
     skip_outcome = False
-    for i in atoms_rt:
-        match: int = atom_chirality_matches(atoms_rt[i], atoms_r[i])
+    for i, atom_rt in atoms_rt.items():
+        match: int = atom_chirality_matches(atom_rt, atoms_r[i])
         if match == 0:
             skip_outcome = True
             break
@@ -1024,9 +1022,7 @@ def validate_chiral_match(
             ):
                 skip_outcome = True
                 break
-    if skip_outcome:
-        return True
-    return False
+    return bool(skip_outcome)
 
 
 def merge_outcomes_intramolecular(outcome: Tuple[Chem.Mol, ...]) -> Chem.Mol:
@@ -1131,21 +1127,24 @@ def check_missing_bonds(
     """
     missing_bonds = []
     for i, j, b in reactants.bonds_by_mapnum:
-        if i in atoms_p and j in atoms_p:
-            # atoms from reactant bond show up in product
-            if not outcome.GetBondBetweenAtoms(
+        if (
+            i in atoms_p
+            and j in atoms_p
+            and not outcome.GetBondBetweenAtoms(
                 atoms_p[i].GetIdx(), atoms_p[j].GetIdx()
-            ):
-                # ...but there is not a bond in the product between those atoms
-                if (
-                    i not in atoms_rt
-                    or j not in atoms_rt
-                    or not template_r.GetBondBetweenAtoms(
-                        atoms_rt[i].GetIdx(), atoms_rt[j].GetIdx()
-                    )
-                ):
-                    # the reactant template did not specify a bond between those atoms (e.g., intentionally destroy)
-                    missing_bonds.append((i, j, b))
+            )
+            and (
+                i not in atoms_rt
+                or j not in atoms_rt
+                or not template_r.GetBondBetweenAtoms(
+                    atoms_rt[i].GetIdx(), atoms_rt[j].GetIdx()
+                )
+            )
+        ):
+            # atoms from reactant bond show up in product
+            # ...but there is not a bond in the product between those atoms
+            # and the reactant template did not specify a bond between those atoms (e.g., intentionally destroy)
+            missing_bonds.append((i, j, b))
 
     bonds_were_added = False
     if missing_bonds:

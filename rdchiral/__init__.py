@@ -14,13 +14,13 @@ lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)
 
 __all__ = [
-    "rdchiralRunText",
-    "rdchiralRun",
-    "rdchiralReaction",
-    "rdchiralReactants",
+    "DEFAULT_EXTRACTED_TEMPLATE",
     "extract_from_reaction",
     "extract_from_reaction_smiles",
-    "DEFAULT_EXTRACTED_TEMPLATE",
+    "rdchiralReactants",
+    "rdchiralReaction",
+    "rdchiralRun",
+    "rdchiralRunText",
 ]
 
 try:

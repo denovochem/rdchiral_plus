@@ -349,12 +349,12 @@ def get_atoms_across_double_bonds(
         bab = None
         bbb = None
 
-        def _bab_generator() -> Iterator[Chem.Bond]:
-            for z in ba.GetBonds():
+        def _bab_generator(atom: Chem.Atom) -> Iterator[Chem.Bond]:
+            for z in atom.GetBonds():
                 if z.GetBondType() != BondType.DOUBLE:
                     yield z
 
-        for bab in _bab_generator():
+        for bab in _bab_generator(ba):
             if bab.GetBondDir() != BondDir.NONE:
                 front_mapnums = (
                     bab.GetBeginAtom().GetAtomMapNum(),
@@ -363,12 +363,12 @@ def get_atoms_across_double_bonds(
                 front_dir = bab.GetBondDir()
                 break
 
-        def _bbb_generator() -> Iterator[Chem.Bond]:
-            for z in bb.GetBonds():
+        def _bbb_generator(atom: Chem.Atom) -> Iterator[Chem.Bond]:
+            for z in atom.GetBonds():
                 if z.GetBondType() != BondType.DOUBLE:
                     yield z
 
-        for bbb in _bbb_generator():
+        for bbb in _bbb_generator(bb):
             if bbb.GetBondDir() != BondDir.NONE:
                 back_mapnums = (
                     bbb.GetBeginAtom().GetAtomMapNum(),
@@ -486,13 +486,15 @@ def restore_bond_stereo_to_sp2_atom(
                 needs_inversion = True
 
             for (i, j), bond_dir in bond_dirs_by_mapnum.items():
-                if bond_dir != BondDir.NONE:
-                    if i == bond_to_spec.GetBeginAtom().GetAtomMapNum():
-                        if needs_inversion:
-                            bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
-                        else:
-                            bond_to_spec.SetBondDir(bond_dir)
-                        return True
+                if (
+                    bond_dir != BondDir.NONE
+                    and i == bond_to_spec.GetBeginAtom().GetAtomMapNum()
+                ):
+                    if needs_inversion:
+                        bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
+                    else:
+                        bond_to_spec.SetBondDir(bond_dir)
+                    return True
 
     elif a.GetDegree() == 3:
         # If we lost the branch defining stereochem, it must have been replaced
@@ -508,13 +510,15 @@ def restore_bond_stereo_to_sp2_atom(
                 needs_inversion = False
 
             for (i, j), bond_dir in bond_dirs_by_mapnum.items():
-                if bond_dir != BondDir.NONE:
-                    if i == bond_to_spec.GetBeginAtom().GetAtomMapNum():
-                        if needs_inversion:
-                            bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
-                        else:
-                            bond_to_spec.SetBondDir(bond_dir)
-                        return True
+                if (
+                    bond_dir != BondDir.NONE
+                    and i == bond_to_spec.GetBeginAtom().GetAtomMapNum()
+                ):
+                    if needs_inversion:
+                        bond_to_spec.SetBondDir(BondDirOpposite[bond_dir])
+                    else:
+                        bond_to_spec.SetBondDir(bond_dir)
+                    return True
 
     return False
 
