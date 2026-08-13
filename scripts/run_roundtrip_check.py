@@ -7,17 +7,53 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 
 def _run(
     cmd: list[str], *, env: dict[str, str] | None = None, cwd: Path | None = None
 ) -> None:
+    """
+    Run a subprocess command, printing it first and raising on failure.
+
+    Args:
+        cmd (list[str]): Command and arguments to execute.
+        env (dict[str, str] | None): Optional environment variables for the subprocess.
+            If None, inherits the current process environment.
+        cwd (Path | None): Optional working directory for the subprocess.
+    """
     printable = " ".join(cmd)
     print(f"\n$ {printable}")
     subprocess.run(cmd, check=True, env=env, cwd=str(cwd) if cwd is not None else None)
 
 
+def _check_uv() -> None:
+    """
+    Verify that ``uv`` is available on PATH.
+
+    Raises:
+        SystemExit: If ``uv`` is not found, with instructions for installation.
+    """
+    if shutil.which("uv") is None:
+        raise SystemExit(
+            "'uv' is required but was not found on PATH.\n"
+            "Install it with one of:\n"
+            "  curl -LsSf https://astral.sh/uv/install.sh | sh\n"
+            "  pip install uv\n"
+            "See https://docs.astral.sh/uv/ for more information."
+        )
+
+
 def _venv_python(venv_dir: Path) -> Path:
+    """
+    Return the Python executable path for a virtual environment.
+
+    Args:
+        venv_dir (Path): Root directory of the virtual environment.
+
+    Returns:
+        Path: Path to the Python executable, accounting for platform differences.
+    """
     if os.name == "nt":
         return venv_dir / "Scripts" / "python.exe"
     return venv_dir / "bin" / "python"
@@ -46,6 +82,15 @@ def _build_env_from_url(*, install_spec: str, venv_dir: Path, reinstall: bool) -
 
 
 def _conda_python(env_dir: Path) -> Path:
+    """
+    Return the Python executable path for a conda environment.
+
+    Args:
+        env_dir (Path): Root directory of the conda environment.
+
+    Returns:
+        Path: Path to the Python executable, accounting for platform differences.
+    """
     if os.name == "nt":
         return env_dir / "python.exe"
     return env_dir / "bin" / "python"
@@ -123,6 +168,15 @@ def _build_conda_env(*, env_dir: Path, reinstall: bool) -> None:
 def _build_env(
     *, repo_root: Path, venv_dir: Path, use_mypyc: bool, reinstall: bool
 ) -> None:
+    """
+    Build a uv virtual environment and install the local rdchiral package.
+
+    Args:
+        repo_root (Path): Path to the rdchiral repository root for installation.
+        venv_dir (Path): Target directory for the virtual environment.
+        use_mypyc (bool): If True, set RDCHIRAL_USE_MYPYC=1 to enable mypyc compilation.
+        reinstall (bool): If True, delete and recreate the venv if it already exists.
+    """
     if reinstall and venv_dir.exists():
         shutil.rmtree(venv_dir)
 
@@ -188,6 +242,17 @@ def _run_roundtrip_check(
 
 
 def main() -> int:
+    """
+    Orchestrate roundtrip consistency checks across rdchiral environments.
+
+    Creates and manages virtual environments for pure-Python, mypyc-compiled,
+    default rdchiral (from PyPI), and rdchiral_cpp (from conda-forge) builds.
+    Runs the roundtrip check script in each environment, collects the
+    consistent counts, and prints a summary comparison.
+
+    Returns:
+        int: 0 on success.
+    """
     parser = argparse.ArgumentParser(
         description="Run roundtrip consistency check across rdchiral environments"
     )
@@ -222,7 +287,34 @@ def main() -> int:
         default=None,
         help="Randomize the order of environment checks",
     )
+    parser.add_argument(
+        "--skip-pure-python",
+        action="store_true",
+        help="Skip the pure-Python environment",
+    )
+    parser.add_argument(
+        "--skip-mypyc",
+        action="store_true",
+        help="Skip the mypyc-compiled environment",
+    )
+    parser.add_argument(
+        "--skip-default",
+        action="store_true",
+        help="Skip the default rdchiral (from PyPI) environment",
+    )
+    parser.add_argument(
+        "--skip-cpp",
+        action="store_true",
+        help="Skip the rdchiral_cpp (conda-forge) environment",
+    )
+    parser.add_argument(
+        "--original-rdchiral-spec",
+        default="rdchiral",
+        help="pip install spec for the default rdchiral environment (default: rdchiral from PyPI)",
+    )
     args = parser.parse_args()
+
+    _check_uv()
 
     repo_root = Path(__file__).resolve().parent.parent
     check_script_path = (repo_root / "scripts" / "roundtrip_check_script.py").resolve()
@@ -273,7 +365,7 @@ def main() -> int:
     def _check_default() -> None:
         print("\n=== Default (pip) ===")
         _build_env_from_url(
-            install_spec="rdchiral",
+            install_spec=args.original_rdchiral_spec,
             venv_dir=venv_default,
             reinstall=args.reinstall,
         )
@@ -301,12 +393,18 @@ def main() -> int:
         results["cpp"] = consistent
         print(f"Consistent: {consistent}")
 
-    checks = [
-        ("pure_python", _check_pure_python),
-        ("mypyc", _check_mypyc),
-        ("default", _check_default),
-        ("cpp", _check_cpp),
-    ]
+    checks: list[tuple[str, Callable[[], None]]] = []
+    if not args.skip_pure_python:
+        checks.append(("pure_python", _check_pure_python))
+    if not args.skip_mypyc:
+        checks.append(("mypyc", _check_mypyc))
+    if not args.skip_default:
+        checks.append(("default", _check_default))
+    if not args.skip_cpp:
+        checks.append(("cpp", _check_cpp))
+
+    if not checks:
+        raise SystemExit("All environments skipped. Nothing to do.")
 
     if args.shuffle_seed is not None:
         random.seed(args.shuffle_seed)

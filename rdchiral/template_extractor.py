@@ -38,6 +38,7 @@ DEFAULT_EXTRACTED_TEMPLATE: ExtractedTemplate = {
 class rdChiralTemplateExtractInput(TypedDict):
     reactants: str
     products: str
+    spectators: str
     _id: str | int | None
 
 
@@ -1875,6 +1876,7 @@ def extract_from_reaction_smiles(
     reaction_dict: rdChiralTemplateExtractInput = {
         "reactants": reactants,
         "products": products,
+        "spectators": "",
         "_id": reaction_id,
     }
 
