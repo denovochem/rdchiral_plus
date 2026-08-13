@@ -406,9 +406,9 @@ def get_tetrahedral_atoms(
             product_atom_tags[atom_tag] = ap
 
     for atom_tag, ar in reactant_atom_tags.items():
-        ap = product_atom_tags.get(atom_tag)
-        if ap is not None:
-            tetrahedral_atoms.append((atom_tag, ar, ap))
+        ap_opt: Optional[Chem.Atom] = product_atom_tags.get(atom_tag)
+        if ap_opt is not None:
+            tetrahedral_atoms.append((atom_tag, ar, ap_opt))
 
     return tetrahedral_atoms
 
@@ -446,7 +446,7 @@ def get_stereogenic_double_bonds(
             atom1_map = bond.GetBeginAtom().GetAtomMapNum()
             atom2_map = bond.GetEndAtom().GetAtomMapNum()
             if atom1_map and atom2_map:
-                key = tuple(sorted([atom1_map, atom2_map]))
+                key: Tuple[int, int] = tuple(sorted([atom1_map, atom2_map]))  # type: ignore[assignment]
                 reactant_bonds[key] = bond.GetStereo()
 
     # Build map for products
@@ -459,8 +459,8 @@ def get_stereogenic_double_bonds(
             atom1_map = bond.GetBeginAtom().GetAtomMapNum()
             atom2_map = bond.GetEndAtom().GetAtomMapNum()
             if atom1_map and atom2_map:
-                key = tuple(sorted([atom1_map, atom2_map]))
-                product_bonds[key] = bond.GetStereo()
+                pkey: Tuple[int, int] = tuple(sorted([atom1_map, atom2_map]))  # type: ignore[assignment]
+                product_bonds[pkey] = bond.GetStereo()
 
     # Find bonds that have stereochemistry that changes or is specified
     stereogenic_bonds = []
@@ -1659,7 +1659,7 @@ def extract_from_reaction(
     unmapped_ids = []
     seen_atom_map_nums = set()
     for product in products:
-        prod_atoms = product.GetAtoms()
+        prod_atoms = list(product.GetAtoms())
         num_mapped_atoms = 0
         for atom in prod_atoms:
             map_num = atom.GetAtomMapNum()
@@ -1713,9 +1713,8 @@ def extract_from_reaction(
     extra_reactant_fragment = ""
     if are_unmapped_product_atoms:  # add fragment to template
         for product in products:
-            prod_atoms = product.GetAtoms()
             # Define new atom symbols for fragment with atom maps, generalizing fully
-            atom_symbols = ["[{}]".format(a.GetSymbol()) for a in prod_atoms]
+            atom_symbols = ["[{}]".format(a.GetSymbol()) for a in product.GetAtoms()]
             # And bond symbols...
             bond_symbols = ["~" for _ in product.GetBonds()]
             if unmapped_ids:
