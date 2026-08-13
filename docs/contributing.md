@@ -19,7 +19,14 @@ All code must pass:
 - mypy type checking
 - pytest test suite
 
-Run these checks locally before pushing to ensure your PR will pass CI.
+Run these checks locally before pushing to ensure your PR will pass CI:
+
+```bash
+ruff check rdchiral
+ruff format --check rdchiral
+mypy rdchiral
+pytest
+```
 
 ## Pre-commit Hooks
 

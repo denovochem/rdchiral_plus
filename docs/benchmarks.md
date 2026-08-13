@@ -80,7 +80,11 @@ This benchmark consists of applying 1000 templates to 1000 reactant SMILES for a
 
 This benchmark consists of applying 10,000 template reactant applications, all of which result in products with the original rdchiral library.
 
+Results for this benchmark are not yet reported here.
+
 ## Benchmark 3: template extraction
 
 This benchmark consists of extracting 10,000 templates from atom mapped reactions.
+
+Results for this benchmark are not yet reported here.
  

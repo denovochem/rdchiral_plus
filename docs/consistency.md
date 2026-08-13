@@ -8,7 +8,7 @@ This page describes how we measure consistency with the original rdchiral librar
 
 We compare five operations across environments:
 
-- `rdchiralExtract`: template extraction via `rdchiral.template_extractor.extract_from_reaction`.
+- `rdchiralExtract` (benchmark label for `extract_from_reaction`): template extraction via `rdchiral.template_extractor.extract_from_reaction`.
 - `rdchiralRun`: template application via `rdchiral.main.rdchiralRun` on pre-initialized `rdchiralReaction` / `rdchiralReactants` objects.
 - `rdchiralRun_return_mapped_keep_mapnums`: template application via `rdchiral.main.rdchiralRun` on pre-initialized `rdchiralReaction` / `rdchiralReactants` objects, with return_mapped=True and keep_mapnums=True.
 - `rdchiralRun_return_mapped`: template application via `rdchiral.main.rdchiralRun` on pre-initialized `rdchiralReaction` / `rdchiralReactants` objects, with return_mapped=True.

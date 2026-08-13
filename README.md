@@ -10,7 +10,7 @@ Wrapper for RDKit's RunReactants to improve stereochemistry handling
 
 This repository is a fork of [rdchiral](https://github.com/connorcoley/rdchiral). It has been modified for improved performance while maintaining high consistency with the upstream library. These modifications provide speed that is marginally slower than the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)), but has the benefits of being written in Python. This library is pip installable cross platform.
 
-The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `rdchiralExtract`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
+The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `extract_from_reaction`, `extract_from_reaction_smiles`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
 
 ## Changes to template application
 
@@ -74,7 +74,7 @@ RDCHIRAL_USE_MYPYC=1 pip install "git+https://github.com/denovochem/rdchiral_plu
 
 ## Basic usage
 ```python
-from rdchiral import rdchiralRunText, rdchiralReaction, rdchiralReactants
+from rdchiral import rdchiralRun, rdchiralRunText, rdchiralReaction, rdchiralReactants
 
 # Run directly from SMARTS and SMILES strings
 # This is slower than pre-initializing rdchiralReaction and rdchiralReactants when
