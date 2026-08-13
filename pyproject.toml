@@ -59,6 +59,7 @@ ignore = ["UP", "BLE001"]
 [tool.ruff.lint.per-file-ignores]
 "scripts/speed_benchmark_script.py" = ["E402"]
 "tests/unit/test_benchmark_utils.py" = ["E402"]
+"examples/*.ipynb" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = [
