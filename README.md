@@ -79,8 +79,8 @@ from rdchiral import rdchiralRun, rdchiralRunText, rdchiralReaction, rdchiralRea
 # Run directly from SMARTS and SMILES strings
 # This is slower than pre-initializing rdchiralReaction and rdchiralReactants when
 # processing a large number of reactions
-reaction_smarts = '[C:1][OH:2]>>[C:1][O:2][C]'
-reactant_smiles = 'OCC(=O)OCCCO'
+reaction_smarts = "[C:1][OH:2]>>[C:1][O:2][C]"
+reactant_smiles = "OCC(=O)OCCCO"
 outcomes = rdchiralRunText(reaction_smarts, reactant_smiles)
 print(outcomes)
 

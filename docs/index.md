@@ -35,8 +35,8 @@ RDCHIRAL_USE_MYPYC=1 pip install "git+https://github.com/denovochem/rdchiral_plu
 from rdchiral import rdchiralRun, rdchiralRunText, rdchiralReaction, rdchiralReactants
 
 # Run directly from SMARTS and SMILES (slower than pre-initializing rdchiralReaction and rdchiralReactants when processing a large numbers of reactions)
-reaction_smarts = '[C:1][OH:2]>>[C:1][O:2][C]'
-reactant_smiles = 'OCC(=O)OCCCO'
+reaction_smarts = "[C:1][OH:2]>>[C:1][O:2][C]"
+reactant_smiles = "OCC(=O)OCCCO"
 outcomes = rdchiralRunText(reaction_smarts, reactant_smiles)
 print(outcomes)
 

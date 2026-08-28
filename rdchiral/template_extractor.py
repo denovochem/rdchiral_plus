@@ -1835,8 +1835,8 @@ def extract_from_reaction(
     rxn_string = "{}>>{}".format(reactant_fragments, product_fragments)
     atom_map_reassignment: Dict[int, int] = {}
     if canonicalize_template:
-        rxn_canonical, atom_map_reassignment = (
-            _canonicalize_transform_with_mapping(rxn_string)
+        rxn_canonical, atom_map_reassignment = _canonicalize_transform_with_mapping(
+            rxn_string
         )
     else:
         rxn_canonical = rxn_string

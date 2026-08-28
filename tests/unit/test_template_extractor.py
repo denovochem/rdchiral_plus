@@ -432,7 +432,9 @@ def test_extract_from_reaction_smiles_passes_reaction_id():
         ("[C:5]>>[C:1]", {5: 1, 1: 2}),
     ],
 )
-def test_reassign_atom_mapping_with_mapping_returns_correct_mapping(transform, expected_mapping):
+def test_reassign_atom_mapping_with_mapping_returns_correct_mapping(
+    transform, expected_mapping
+):
     result_str, mapping = _reassign_atom_mapping_with_mapping(transform)
     assert mapping == expected_mapping
     # Verify the result string has only sequential labels 1..N (unique, since
@@ -456,7 +458,10 @@ def test_reassign_atom_mapping_with_mapping_no_labels():
 def test_reassign_atom_mapping_delegates_to_with_mapping():
     """Verify the public function returns the same string as the internal one."""
     transform = "[C:3][O:1]>>[C:1][O:3]"
-    assert reassign_atom_mapping(transform) == _reassign_atom_mapping_with_mapping(transform)[0]
+    assert (
+        reassign_atom_mapping(transform)
+        == _reassign_atom_mapping_with_mapping(transform)[0]
+    )
 
 
 # ---------------------------------------------------------------------------
