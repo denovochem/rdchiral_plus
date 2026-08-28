@@ -20,6 +20,8 @@ class ExtractedTemplate(TypedDict):
     dimer_only: bool
     reaction_id: str | int | None
     necessary_reagent: str
+    changed_atom_map_nums: List[int]
+    atom_map_reassignment: Dict[int, int]
 
 
 DEFAULT_EXTRACTED_TEMPLATE: ExtractedTemplate = {
@@ -32,6 +34,8 @@ DEFAULT_EXTRACTED_TEMPLATE: ExtractedTemplate = {
     "dimer_only": False,
     "reaction_id": "",
     "necessary_reagent": "",
+    "changed_atom_map_nums": [],
+    "atom_map_reassignment": {},
 }
 
 
@@ -1061,6 +1065,47 @@ def convert_atom_to_wildcard(atom: Chem.Atom) -> str:
     return symbol
 
 
+def _reassign_atom_mapping_with_mapping(
+    transform: str,
+) -> Tuple[str, Dict[int, int]]:
+    """
+    Reassign atom-mapping labels and return both the result and the mapping used.
+
+    Performs the same left-to-right sequential reassignment as
+    `reassign_atom_mapping`, but additionally returns a dictionary mapping
+    original atom map numbers (as integers) to their reassigned values.
+
+    Args:
+        transform (str): An atom-mapped reaction SMILES string with labels
+            in the format ":N]" where N is the atom-mapping number.
+
+    Returns:
+        Tuple[str, Dict[int, int]]:
+            - The reaction SMILES with reassigned atom-mapping labels.
+            - Dictionary mapping original map numbers to reassigned map numbers.
+    """
+    all_labels: List[str] = re.findall(r"\:([0-9]+)\]", transform)
+
+    replacements: List[str] = []
+    replacement_dict: Dict[str, str] = {}
+    counter = 1
+    for label in all_labels:  # keep in order! this is important
+        if label not in replacement_dict:
+            replacement_dict[label] = str(counter)
+            counter += 1
+        replacements.append(replacement_dict[label])
+
+    transform_newmaps = re.sub(
+        r"\:[0-9]+\]", lambda match: ":" + replacements.pop(0) + "]", transform
+    )
+
+    map_mapping: Dict[int, int] = {
+        int(orig): int(new) for orig, new in replacement_dict.items()
+    }
+
+    return transform_newmaps, map_mapping
+
+
 def reassign_atom_mapping(transform: str) -> str:
     """
     Reassign atom-mapping labels in a reaction SMILES from left to right.
@@ -1081,24 +1126,7 @@ def reassign_atom_mapping(transform: str) -> str:
         >>> reassign_atom_mapping("[C:2][O:1]>>[C:1][O:2]")
         '[C:1][O:2]>>[C:1][O:2]'
     """
-
-    all_labels: List[str] = re.findall(r"\:([0-9]+)\]", transform)
-
-    # Define list of replacements which matches all_labels *IN ORDER*
-    replacements: List[str] = []
-    replacement_dict: Dict[str, str] = {}
-    counter = 1
-    for label in all_labels:  # keep in order! this is important
-        if label not in replacement_dict:
-            replacement_dict[label] = str(counter)
-            counter += 1
-        replacements.append(replacement_dict[label])
-
-    # Perform replacements in order
-    transform_newmaps = re.sub(
-        r"\:[0-9]+\]", lambda match: ":" + replacements.pop(0) + "]", transform
-    )
-
+    transform_newmaps, _ = _reassign_atom_mapping_with_mapping(transform)
     return transform_newmaps
 
 
@@ -1482,6 +1510,42 @@ def split_reaction_smarts(reaction_smarts: str) -> List[str]:
     return split_smarts
 
 
+def _canonicalize_transform_with_mapping(
+    transform: str, fix_cycle_chirality: bool = True
+) -> Tuple[str, Dict[int, int]]:
+    """
+    Canonicalize a transform and return the atom-map reassignment mapping.
+
+    Performs the same canonicalization as `canonicalize_transform` but
+    additionally returns the dictionary mapping original atom map numbers
+    to their reassigned canonical values.
+
+    Args:
+        transform (str): An atom-mapped reaction SMARTS string in the form
+            "reactants>>products".
+        fix_cycle_chirality (bool): If True, invert tetrahedral chirality for
+            unmapped atoms preceding ring closure tokens to handle stereochemical
+            invariants in cyclic templates.
+
+    Returns:
+        Tuple[str, Dict[int, int]]:
+            - The canonicalized reaction SMARTS with reordered templates and
+              sequentially reassigned atom-mapping labels.
+            - Dictionary mapping original atom map numbers to reassigned
+              canonical atom map numbers.
+    """
+    transform_reordered = ">>".join(
+        [_canonicalize_template(x) for x in transform.split(">>")]
+    )
+
+    if fix_cycle_chirality:
+        transform_reordered = invert_chirality_around_unmapped_ring_closure(
+            transform_reordered
+        )
+
+    return _reassign_atom_mapping_with_mapping(transform_reordered)
+
+
 def canonicalize_transform(transform: str, fix_cycle_chirality: bool = True) -> str:
     """
     Convert an atom-mapped SMARTS transform to a canonical form.
@@ -1502,17 +1566,10 @@ def canonicalize_transform(transform: str, fix_cycle_chirality: bool = True) -> 
         str: The canonicalized reaction SMARTS with reordered templates and
             sequentially reassigned atom-mapping labels.
     """
-
-    transform_reordered = ">>".join(
-        [_canonicalize_template(x) for x in transform.split(">>")]
+    transform_canonical, _ = _canonicalize_transform_with_mapping(
+        transform, fix_cycle_chirality=fix_cycle_chirality
     )
-
-    if fix_cycle_chirality:
-        transform_reordered = invert_chirality_around_unmapped_ring_closure(
-            transform_reordered
-        )
-
-    return reassign_atom_mapping(transform_reordered)
+    return transform_canonical
 
 
 def _canonicalize_template(template: str) -> str:
@@ -1619,6 +1676,12 @@ def extract_from_reaction(
             - 'reaction_id': The reaction identifier from the input
             - 'necessary_reagent': SMILES fragment for unmapped product atoms that
               must be supplied as reagents
+            - 'changed_atom_map_nums': List of original atom map numbers from the
+              input SMILES that were identified as chemically changed at the
+              reaction center
+            - 'atom_map_reassignment': Dictionary mapping original atom map numbers
+              to their reassigned canonical values in the output template. Empty
+              when canonicalize_template is False
 
     Raises:
         ValueError: Propagated from get_fragments_for_changed_atoms if fragment
@@ -1770,8 +1833,11 @@ def extract_from_reaction(
 
     # Put together and canonicalize (as best as possible)
     rxn_string = "{}>>{}".format(reactant_fragments, product_fragments)
+    atom_map_reassignment: Dict[int, int] = {}
     if canonicalize_template:
-        rxn_canonical = canonicalize_transform(rxn_string)
+        rxn_canonical, atom_map_reassignment = (
+            _canonicalize_transform_with_mapping(rxn_string)
+        )
     else:
         rxn_canonical = rxn_string
     # Change from inter-molecular to intra-molecular
@@ -1806,6 +1872,8 @@ def extract_from_reaction(
         "dimer_only": dimer_only,
         "reaction_id": reaction["_id"],
         "necessary_reagent": extra_reactant_fragment,
+        "changed_atom_map_nums": changed_atom_tags,
+        "atom_map_reassignment": atom_map_reassignment,
     }
 
     return template
@@ -1865,6 +1933,12 @@ def extract_from_reaction_smiles(
             - 'reaction_id': The reaction identifier from the input
             - 'necessary_reagent': SMILES fragment for unmapped product atoms that
               must be supplied as reagents
+            - 'changed_atom_map_nums': List of original atom map numbers from the
+              input SMILES that were identified as chemically changed at the
+              reaction center
+            - 'atom_map_reassignment': Dictionary mapping original atom map numbers
+              to their reassigned canonical values in the output template. Empty
+              when canonicalize_template is False
 
     Raises:
         ValueError: If the reaction SMILES does not contain exactly one '>>' separator.

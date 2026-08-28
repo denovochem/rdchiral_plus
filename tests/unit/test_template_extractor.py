@@ -1,8 +1,12 @@
+import re
+
 import pytest
 from rdkit import Chem
 from rdkit.Chem.rdchem import ChiralType
 
 from rdchiral.template_extractor import (
+    _canonicalize_transform_with_mapping,
+    _reassign_atom_mapping_with_mapping,
     clear_mapnum,
     convert_atom_to_wildcard,
     expand_changed_atom_tags,
@@ -408,3 +412,150 @@ def test_extract_from_reaction_smiles_passes_reaction_id():
     rxn_smiles = "[CH3:1][OH:2].[Cl:3][C:4](=O)[CH3:5]>>[CH3:1][O:2][C:4](=O)[CH3:5]"
     result = extract_from_reaction_smiles(rxn_smiles, reaction_id="rxn_99")
     assert result["reaction_id"] == "rxn_99"
+
+
+# ---------------------------------------------------------------------------
+# _reassign_atom_mapping_with_mapping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "transform, expected_mapping",
+    [
+        # Already sequential 1..N → identity mapping
+        ("[C:1][O:2]>>[C:1][O:2]", {1: 1, 2: 2}),
+        # Reversed labels: 2 appears first, so 2→1, 1→2
+        ("[C:2][O:1]>>[C:1][O:2]", {2: 1, 1: 2}),
+        # Three labels, out of order
+        ("[C:3][O:1][N:2]>>[C:1][O:2][N:3]", {3: 1, 1: 2, 2: 3}),
+        # Two distinct labels, 5 appears first
+        ("[C:5]>>[C:1]", {5: 1, 1: 2}),
+    ],
+)
+def test_reassign_atom_mapping_with_mapping_returns_correct_mapping(transform, expected_mapping):
+    result_str, mapping = _reassign_atom_mapping_with_mapping(transform)
+    assert mapping == expected_mapping
+    # Verify the result string has only sequential labels 1..N (unique, since
+    # labels appear on both sides of >>)
+    labels = sorted(set(re.findall(r":([0-9]+)\]", result_str)))
+    assert labels == [str(i) for i in range(1, len(expected_mapping) + 1)]
+
+
+def test_reassign_atom_mapping_with_mapping_empty_string():
+    result_str, mapping = _reassign_atom_mapping_with_mapping("")
+    assert result_str == ""
+    assert mapping == {}
+
+
+def test_reassign_atom_mapping_with_mapping_no_labels():
+    result_str, mapping = _reassign_atom_mapping_with_mapping("CCO>>CCO")
+    assert result_str == "CCO>>CCO"
+    assert mapping == {}
+
+
+def test_reassign_atom_mapping_delegates_to_with_mapping():
+    """Verify the public function returns the same string as the internal one."""
+    transform = "[C:3][O:1]>>[C:1][O:3]"
+    assert reassign_atom_mapping(transform) == _reassign_atom_mapping_with_mapping(transform)[0]
+
+
+# ---------------------------------------------------------------------------
+# _canonicalize_transform_with_mapping
+# ---------------------------------------------------------------------------
+
+
+def test_canonicalize_transform_with_mapping_returns_mapping():
+    transform = "([C:3][O:1]).([Cl:2])>>([C:1][O:3][Cl:2])"
+    result_str, mapping = _canonicalize_transform_with_mapping(transform)
+    assert isinstance(mapping, dict)
+    assert all(isinstance(k, int) and isinstance(v, int) for k, v in mapping.items())
+    # The result should have sequential labels (unique, since labels appear on both sides)
+    labels = sorted(set(re.findall(r":([0-9]+)\]", result_str)))
+    assert labels == [str(i) for i in range(1, len(mapping) + 1)]
+
+
+def test_canonicalize_transform_with_mapping_identity():
+    """A transform with already-sequential labels should produce identity mapping."""
+    transform = "([C:1][O:2])>>([C:1][O:2])"
+    _result_str, mapping = _canonicalize_transform_with_mapping(transform)
+    assert mapping == {1: 1, 2: 2}
+
+
+# ---------------------------------------------------------------------------
+# extract_from_reaction: changed_atom_map_nums and atom_map_reassignment
+# ---------------------------------------------------------------------------
+
+
+def test_extract_from_reaction_populates_changed_atom_map_nums():
+    reaction = {
+        "reactants": "[CH3:1][OH:2].[Cl:3][C:4](=O)[CH3:5]",
+        "products": "[CH3:1][O:2][C:4](=O)[CH3:5]",
+        "_id": "test_1",
+    }
+    result = extract_from_reaction(reaction)
+    assert result["reaction_smarts"] != ""
+    changed = result["changed_atom_map_nums"]
+    assert isinstance(changed, list)
+    assert len(changed) > 0
+    assert all(isinstance(x, int) for x in changed)
+    # Cl (map 3) is a leaving group; O (map 2) changes bonding; C (map 4) changes
+    assert 2 in changed  # O changes from OH to ester
+    assert 3 in changed  # Cl leaves
+
+
+def test_extract_from_reaction_populates_atom_map_reassignment():
+    reaction = {
+        "reactants": "[CH3:1][OH:2].[Cl:3][C:4](=O)[CH3:5]",
+        "products": "[CH3:1][O:2][C:4](=O)[CH3:5]",
+        "_id": "test_1",
+    }
+    result = extract_from_reaction(reaction)
+    assert result["reaction_smarts"] != ""
+    mapping = result["atom_map_reassignment"]
+    assert isinstance(mapping, dict)
+    assert len(mapping) > 0
+    assert all(isinstance(k, int) and isinstance(v, int) for k, v in mapping.items())
+    # Reassigned values should be 1..N sequential
+    values = sorted(mapping.values())
+    assert values == list(range(1, len(mapping) + 1))
+
+
+def test_extract_from_reaction_no_canonicalize_empty_reassignment():
+    reaction = {
+        "reactants": "[CH3:1][OH:2].[Cl:3][C:4](=O)[CH3:5]",
+        "products": "[CH3:1][O:2][C:4](=O)[CH3:5]",
+        "_id": "test_1",
+    }
+    result = extract_from_reaction(reaction, canonicalize_template=False)
+    assert result["reaction_smarts"] != ""
+    assert result["atom_map_reassignment"] == {}
+    # changed_atom_map_nums should still be populated
+    assert len(result["changed_atom_map_nums"]) > 0
+
+
+def test_extract_from_reaction_default_template_has_empty_new_fields():
+    reaction = {"reactants": "INVALID", "products": "INVALID", "_id": None}
+    result = extract_from_reaction(reaction)
+    assert result["changed_atom_map_nums"] == []
+    assert result["atom_map_reassignment"] == {}
+
+
+def test_extract_from_reaction_no_changed_atoms_default_has_empty_new_fields():
+    reaction = {
+        "reactants": "[CH3:1][OH:2]",
+        "products": "[CH3:1][OH:2]",
+        "_id": None,
+    }
+    result = extract_from_reaction(reaction)
+    assert result["changed_atom_map_nums"] == []
+    assert result["atom_map_reassignment"] == {}
+
+
+def test_extract_from_reaction_smiles_populates_new_fields():
+    rxn_smiles = "[CH3:1][OH:2].[Cl:3][C:4](=O)[CH3:5]>>[CH3:1][O:2][C:4](=O)[CH3:5]"
+    result = extract_from_reaction_smiles(rxn_smiles)
+    assert result["reaction_smarts"] != ""
+    assert isinstance(result["changed_atom_map_nums"], list)
+    assert len(result["changed_atom_map_nums"]) > 0
+    assert isinstance(result["atom_map_reassignment"], dict)
+    assert len(result["atom_map_reassignment"]) > 0
