@@ -60,7 +60,7 @@ def extract_product_smarts_constraints(
                 continue
             try:
                 atom_smarts = Chem.MolFragmentToSmarts(pt, [a.GetIdx()])
-            except Exception:
+            except Exception:  # noqa: S112
                 continue
 
             clean_smarts = _strip_atom_mapnum(atom_smarts)
