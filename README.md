@@ -10,7 +10,7 @@ Wrapper for RDKit's RunReactants to improve stereochemistry handling
 
 This repository is a fork of [RDChiral](https://github.com/connorcoley/rdchiral). It has been modified for improved speed and accuracy while maintaining high interface consistency with the upstream library. Depending on the operation, rdchiral_plus is 1.7×–5× faster than the original RDChiral, and is competitive with the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)) ([benchmarks](https://denovochem.github.io/rdchiral_plus/benchmarks/)). This library has the benefits of being written in Python and achieves a higher round-trip accuracy than either the original or the C++ library. rdchiral_plus is pip installable cross platform.
 
-The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `extract_from_reaction`, `extract_from_reaction_smiles`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
+Most interface functions (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `extract_from_reaction`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
 
 ## Changes to template application
 
