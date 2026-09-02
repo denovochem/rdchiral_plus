@@ -131,6 +131,11 @@ def filter_outcomes_by_smarts_constraints(
 
             product = outcome[ti]
 
+            # Product molecules from RunReactants may not have RingInfo
+            # initialized, which causes a precondition violation when
+            # GetSubstructMatches is called with ring-related SMARTS (R, r).
+            Chem.FastFindRings(product)
+
             # Locate the product atom that originated from the template atom
             # with this map number.
             target_idx = None

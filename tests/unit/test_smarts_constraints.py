@@ -261,3 +261,19 @@ def test_reactant_side_recursive_smarts_respected_by_runreactants():
                 assert not any(a.GetIdx() in m for m in matches), (
                     "Reactant-side recursive SMARTS was not respected by RunReactants"
                 )
+
+
+def test_filter_ring_constraint_no_ringinfo_error():
+    """Ring-related SMARTS constraints (R, r) must not crash with RingInfo not initialized.
+
+    Product molecules from RunReactants may not have RingInfo initialized.
+    The filter must call FastFindRings before GetSubstructMatches to avoid
+    a precondition violation.
+    """
+    rxn_smarts = "[#6:1]-[#8:2]>>[#6:1].[#8;R:2]"
+    reactant_smiles = "C1CCOC1"
+    outcomes = rdchiralRunText(
+        rxn_smarts, reactant_smiles, enforce_reactants_smarts_constraints=True
+    )
+    # Should not raise; outcome where O is no longer in a ring is valid
+    assert len(outcomes) > 0
