@@ -17,7 +17,7 @@ The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralRe
 - **[Fix cis/trans outcomes for conjugated systems](https://github.com/connorcoley/rdchiral/pull/40)**: Fixes incorrect cis/trans outcomes for conjugated systems that could previously depend on atom numbering. In particular, when a template only specifies part of a conjugated system, the copied double-bond stereo directions may need to be reversed consistently
 - **Broader stereochemistry handling**: Stereochemistry for tetrahedral centers with lone pairs is accounted for
 - **One-pot reactions**: Templates defining multiple reactions on the same product are now properly handled by initializing templates with parentheses where needed
-- **Recursive template application**: Templates can be recursively applied with a max_depth parameter, useful for symmetric reactions, or reactions that occur at multiple sites in a molecule
+- **Recursive template application**: Templates can be recursively applied with a max_depth parameter, useful for reactions that occur at multiple sites in a molecule
 - **Product-side SMARTS constraint enforcement**: RDKit's `RunReactants` ignores certain SMARTS constraints (e.g. `!$(C(=O)O)`) on the product side of reaction SMARTS. The opt-in `enforce_reactants_smarts_constraints` parameter post-filters outcomes to ensure product atoms satisfy their full template SMARTS query, including recursive expressions and non-recursive constraints such as H-count, degree, and formal charge
 
 ## Changes to template extraction
