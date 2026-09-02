@@ -18,6 +18,7 @@ The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralRe
 - **Broader stereochemistry handling**: Stereochemistry for tetrahedral centers with lone pairs is accounted for
 - **One-pot reactions**: Templates defining multiple reactions on the same product are now properly handled by initializing templates with parentheses where needed
 - **Recursive template application**: Templates can be recursively applied with a max_depth parameter, useful for symmetric reactions, or reactions that occur at multiple sites in a molecule
+- **Product-side SMARTS constraint enforcement**: RDKit's `RunReactants` ignores certain SMARTS constraints (e.g. `!$(C(=O)O)`) on the product side of reaction SMARTS. The opt-in `enforce_reactants_smarts_constraints` parameter post-filters outcomes to ensure product atoms satisfy their full template SMARTS query, including recursive expressions and non-recursive constraints such as H-count, degree, and formal charge
 
 ## Changes to template extraction
 

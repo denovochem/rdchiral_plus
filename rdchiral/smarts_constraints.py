@@ -1,7 +1,7 @@
 """Post-filtering of reaction outcomes to enforce product-side SMARTS constraints.
 
-RDKit's ``RunReactants`` ignores recursive SMARTS patterns (e.g. ``!$(C(=O)O)``)
-on the **product side** of reaction SMARTS.  This module provides utilities to
+RDKit's ``RunReactants`` ignores certain SMARTS constraints (e.g. ``!$(C(=O)O)``)
+on the product side of reaction SMARTS.  This module provides utilities to
 extract per-atom SMARTS patterns from product templates and filter outcomes
 after ``RunReactants`` returns, ensuring that product atoms satisfy the full
 atom query — including recursive expressions and non-recursive constraints such
