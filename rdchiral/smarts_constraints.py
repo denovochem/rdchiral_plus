@@ -14,8 +14,6 @@ from typing import List, Tuple
 from rdkit import Chem
 from rdkit.Chem import rdChemReactions
 
-from rdchiral.logging_config import logger
-
 # Matches the ``:N`` atom-map suffix inside a bracket atom expression, e.g.
 # ``[#6&!$(C(=O)O)&+0:5]`` -> ``[#6&!$(C(=O)O)&+0]``.
 _MAPNUM_RE = re.compile(r":\d+\]")
@@ -62,11 +60,7 @@ def extract_product_smarts_constraints(
                 continue
             try:
                 atom_smarts = Chem.MolFragmentToSmarts(pt, [a.GetIdx()])
-            except Exception as exc:
-                logger.debug(
-                    f"Failed to extract SMARTS for atom {a.GetIdx()} "
-                    f"in product template {ti}: {exc}"
-                )
+            except Exception:
                 continue
 
             clean_smarts = _strip_atom_mapnum(atom_smarts)
@@ -87,10 +81,6 @@ def extract_product_smarts_constraints(
 
             patt = Chem.MolFromSmarts(clean_smarts)
             if patt is None:
-                logger.debug(
-                    f"Failed to parse product atom SMARTS: {clean_smarts} "
-                    f"(template {ti}, mapnum {mapnum})"
-                )
                 continue
 
             patterns.append((ti, mapnum, patt))
@@ -159,11 +149,6 @@ def filter_outcomes_by_smarts_constraints(
             matches = product.GetSubstructMatches(patt)
             if not any(target_idx in m for m in matches):
                 valid = False
-                logger.debug(
-                    f"Filtered outcome: atom with old_mapno={target_mapnum} "
-                    f"does not match product template SMARTS constraint "
-                    f"(template fragment {ti})"
-                )
                 break
 
         if valid:
