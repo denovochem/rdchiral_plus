@@ -1,6 +1,6 @@
-# Consistency with original rdchiral
+# Consistency with original RDChiral
 
-This page describes how we measure consistency with the original rdchiral library, and summarizes the results.
+This page describes how we measure consistency with the original RDChiral library, and summarizes the results.
 
 ## Methodology
 
@@ -33,7 +33,7 @@ Input ordering is randomized but deterministic: the benchmark script uses `RANDO
 
 The helper script `scripts/run_speed_benchmark_envs.py` builds and runs multiple environments and forwards a per-environment `--save-file-prefix` so each run produces distinct files:
 
-- `original`: upstream `rdchiral` installed from `git+https://github.com/connorcoley/rdchiral.git`.
+- `RDChiral`: upstream `rdchiral` installed from `git+https://github.com/connorcoley/rdchiral.git`.
 - `cpp`: the `rdchiral_cpp` conda-forge package (run with `--cpp`).
 - `rdchiral_plus`: this fork installed normally (pure-Python mode).
 - `rdchiral_plus_mypyc`: this fork installed with `RDCHIRAL_USE_MYPYC=1`.
@@ -56,7 +56,7 @@ The tables below summarizes agreement with upstream `rdchiral`.
 
 | library | identical / total | identical % |
 | --- | :---: | :---: |
-| cpp | 33496 / 50016 | 66.97% |
+| rdchiral_cpp | 33496 / 50016 | 66.97% |
 | rdchiral_plus | 49000 / 50016 | 97.97% |
 | rdchiral_plus_mypyc | 49000 / 50016 | 97.97% |
 
@@ -64,7 +64,7 @@ The tables below summarizes agreement with upstream `rdchiral`.
 
 | library | identical / total | identical % |
 | --- | :---: | :---: |
-| cpp | 995590 / 1000000 | 99.56% |
+| rdchiral_cpp | 995590 / 1000000 | 99.56% |
 | rdchiral_plus | 999779 / 1000000 | 99.98% |
 | rdchiral_plus_mypyc | 999779 / 1000000 | 99.98% |
 
@@ -72,7 +72,7 @@ The tables below summarizes agreement with upstream `rdchiral`.
 
 | library | identical / total | identical % |
 | --- | :---: | :---: |
-| cpp | 991897 / 1000000 | 99.19% |
+| rdchiral_cpp | 991897 / 1000000 | 99.19% |
 | rdchiral_plus | 999772 / 1000000 | 99.98% |
 | rdchiral_plus_mypyc | 999779 / 1000000 | 99.98% |
 
@@ -80,7 +80,7 @@ The tables below summarizes agreement with upstream `rdchiral`.
 
 | library | identical / total | identical % |
 | --- | :---: | :---: |
-| cpp | 0 / 1000000 | 0.00% |
+| rdchiral_cpp | 0 / 1000000 | 0.00% |
 | rdchiral_plus | 999764 / 1000000 | 99.98% |
 | rdchiral_plus_mypyc | 999779 / 1000000 | 99.98% |
 
@@ -88,7 +88,7 @@ The tables below summarizes agreement with upstream `rdchiral`.
 
 | library | identical / total | identical % |
 | --- | :---: | :---: |
-| cpp | 99576 / 100000 | 99.58% |
+| rdchiral_cpp | 99576 / 100000 | 99.58% |
 | rdchiral_plus | 99967 / 100000 | 99.97% |
 | rdchiral_plus_mypyc | 99967 / 100000 | 99.97% |
 
@@ -108,7 +108,7 @@ From the repository root:
    python scripts/run_speed_benchmark_envs.py --save-file-prefix true --reinstall
    ```
 
-2. Compute identical counts vs upstream `rdchiral`:
+2. Compute identical counts vs upstream `RDChiral`:
 
    ```bash
    python scripts/analyze_consistency.py

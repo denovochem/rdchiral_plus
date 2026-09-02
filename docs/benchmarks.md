@@ -8,20 +8,20 @@ All benchmarks are performed on a fresh reboot of a Latitude 5540 with an Intel 
 
 The helper script `scripts/run_speed_benchmark_envs.py` builds and runs multiple environments:
 
-- `original`: upstream `rdchiral` installed from `git+https://github.com/connorcoley/rdchiral.git`.
+- `RDChiral`: upstream `RDChiral` installed from `git+https://github.com/connorcoley/rdchiral.git`.
 - `rdchiral_plus`: this fork installed normally (pure-Python mode).
 - `rdchiral_plus_mypyc`: this fork installed with `RDCHIRAL_USE_MYPYC=1`.
-- `cpp`: the `rdchiral_cpp` conda-forge package (run with `--cpp`).
+- `rdchiral_cpp`: the `rdchiral_cpp` conda-forge package (run with `--cpp`).
 
 ## Metrics
 
 Benchmarks are executed three times and the average and standard deviation are reported.
 Timings are reported as `avg (std)` in seconds.
 
-The `*_ratio` columns are relative to **orig**, where:
+The `*_ratio` columns are relative to **RDChiral**, where:
 
-- A value **> 1.0** means faster than **orig** (e.g., `3.000` is ~3x faster)
-- A value **< 1.0** means slower than **orig** (e.g., `0.500` is ~2x slower)
+- A value **> 1.0** means faster than **RDChiral** (e.g., `3.000` is ~3x faster)
+- A value **< 1.0** means slower than **RDChiral** (e.g., `0.500` is ~2x slower)
 
 ## Reproducing
 
@@ -68,10 +68,10 @@ Building `rdchiralReaction` objects from 1000 templates.
 
 | env | time (s) | ratio |
 | --- | :---: | :---: |
-| orig | 0.659 (0.084) | 1.000 |
+| RDChiral | 0.659 (0.084) | 1.000 |
 | rdchiral_plus | 0.022 (0.006) | 29.631 |
 | rdchiral_plus_mypyc | 0.029 (0.003) | 22.892 |
-| cpp | 0.157 (0.052) | 4.190 |
+| rdchiral_cpp | 0.157 (0.052) | 4.190 |
 
 ## Benchmark 2: Reactant initialization
 
@@ -79,10 +79,10 @@ Building `rdchiralReactants` objects from 10000 reactant SMILES.
 
 | env | time (s) | ratio |
 | --- | :---: | :---: |
-| orig | 6.543 (0.476) | 1.000 |
+| RDChiral | 6.543 (0.476) | 1.000 |
 | rdchiral_plus | 4.252 (0.530) | 1.539 |
 | rdchiral_plus_mypyc | 4.458 (0.044) | 1.468 |
-| cpp | 1.896 (0.169) | 3.451 |
+| rdchiral_cpp | 1.896 (0.169) | 3.451 |
 
 ## Benchmark 3: rdchiralRunText
 
@@ -90,10 +90,10 @@ Applying 100 templates to 100 reactant SMILES via `rdchiralRunText` for a total 
 
 | env | time (s) | ratio |
 | --- | :---: | :---: |
-| orig | 134.471 (6.558) | 1.000 |
+| RDChiral | 134.471 (6.558) | 1.000 |
 | rdchiral_plus | 26.538 (5.134) | 5.067 |
 | rdchiral_plus_mypyc | 27.198 (1.685) | 4.944 |
-| cpp | 30.906 (0.908) | 4.351 |
+| rdchiral_cpp | 30.906 (0.908) | 4.351 |
 
 ## Benchmark 4: rdchiralRun
 
@@ -101,10 +101,10 @@ Applying 1000 templates to 1000 reactant SMILES via `rdchiralRun` for a total of
 
 | env | time (s) | ratio |
 | --- | :---: | :---: |
-| orig | 129.738 (0.600) | 1.000 |
+| RDChiral | 129.738 (0.600) | 1.000 |
 | rdchiral_plus | 71.490 (5.881) | 1.815 |
 | rdchiral_plus_mypyc | 72.052 (2.138) | 1.801 |
-| cpp | 52.891 (0.677) | 2.453 |
+| rdchiral_cpp | 52.891 (0.677) | 2.453 |
 
 ## Benchmark 5: rdchiralRun with return_mapped=True
 
@@ -112,10 +112,10 @@ Applying 1000 templates to 1000 reactant SMILES via `rdchiralRun` with `return_m
 
 | env | time (s) | ratio |
 | --- | :---: | :---: |
-| orig | 132.008 (2.064) | 1.000 |
+| RDChiral | 132.008 (2.064) | 1.000 |
 | rdchiral_plus | 73.715 (1.796) | 1.791 |
 | rdchiral_plus_mypyc | 75.263 (2.950) | 1.754 |
-| cpp | 54.914 (0.436) | 2.404 |
+| rdchiral_cpp | 54.914 (0.436) | 2.404 |
 
 ## Benchmark 6: rdchiralRun with return_mapped=True, keep_mapnums=True
 
@@ -123,10 +123,10 @@ Applying 1000 templates to 1000 reactant SMILES via `rdchiralRun` with `return_m
 
 | env | time (s) | ratio |
 | --- | :---: | :---: |
-| orig | 121.588 (0.332) | 1.000 |
+| RDChiral | 121.588 (0.332) | 1.000 |
 | rdchiral_plus | 68.792 (2.039) | 1.767 |
 | rdchiral_plus_mypyc | 69.108 (2.267) | 1.759 |
-| cpp | not supported | — |
+| rdchiral_cpp | not supported | — |
 
 ## Benchmark 7: Template extraction
 
@@ -134,7 +134,7 @@ Extracting templates from 50,016 atom-mapped reactions via `extract_from_reactio
 
 | env | time (s) | ratio |
 | --- | :---: | :---: |
-| orig | 268.668 (1.878) | 1.000 |
+| RDChiral | 268.668 (1.878) | 1.000 |
 | rdchiral_plus | 153.925 (12.242) | 1.745 |
 | rdchiral_plus_mypyc | 141.834 (3.408) | 1.894 |
-| cpp | 86.310 (5.668) | 3.113 |
+| rdchiral_cpp | 86.310 (5.668) | 3.113 |
