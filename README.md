@@ -8,16 +8,17 @@
 # rdchiral_plus
 Wrapper for RDKit's RunReactants to improve stereochemistry handling
 
-This repository is a fork of [rdchiral](https://github.com/connorcoley/rdchiral). It has been modified for improved performance while maintaining high consistency with the upstream library. Depending on the operation, rdchiral_plus is 1.7×–5× faster than the original rdchiral, and is competitive with the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)). This library has the benefits of being written in Python and achieves a higher round-trip accuracy than either the original or the C++ library. rdchiral_plus is pip installable cross platform.
+This repository is a fork of [RDChiral](https://github.com/connorcoley/rdchiral). It has been modified for improved speed and accuracy while maintaining high interface consistency with the upstream library. Depending on the operation, rdchiral_plus is 1.7×–5× faster than the original RDChiral, and is competitive with the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)) ([benchmarks](https://denovochem.github.io/rdchiral_plus/benchmarks/)). This library has the benefits of being written in Python and achieves a higher round-trip accuracy than either the original or the C++ library. rdchiral_plus is pip installable cross platform.
 
-The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `extract_from_reaction`, `extract_from_reaction_smiles`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
+Most interface functions (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralReactants`, `extract_from_reaction`, etc.) and returned data structures remain unchanged from the original library, so existing code should work with no modifications. While behavior is mostly consistent with the original library, this fork includes several important fixes and improvements.
 
 ## Changes to template application
 
 - **[Fix cis/trans outcomes for conjugated systems](https://github.com/connorcoley/rdchiral/pull/40)**: Fixes incorrect cis/trans outcomes for conjugated systems that could previously depend on atom numbering. In particular, when a template only specifies part of a conjugated system, the copied double-bond stereo directions may need to be reversed consistently
 - **Broader stereochemistry handling**: Stereochemistry for tetrahedral centers with lone pairs is accounted for
 - **One-pot reactions**: Templates defining multiple reactions on the same product are now properly handled by initializing templates with parentheses where needed
-- **Recursive template application**: Templates can be recursively applied with a max_depth parameter, useful for symmetric reactions, or reactions that occur at multiple sites in a molecule
+- **Recursive template application**: Templates can be recursively applied with a max_depth parameter, useful for reactions that occur at multiple sites in a molecule
+- **Product-side SMARTS constraint enforcement**: RDKit's `RunReactants` ignores certain SMARTS constraints (e.g. `!$(C(=O)O)`) on the product side of reaction SMARTS. The opt-in `enforce_reactants_smarts_constraints` parameter post-filters outcomes to ensure product atoms satisfy their full template SMARTS query, including recursive expressions and non-recursive constraints such as H-count, degree, and formal charge
 
 ## Changes to template extraction
 
@@ -25,6 +26,7 @@ The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralRe
 - **Deterministic template extraction**: Replaced random shuffle-based tetrahedral center correction loops with deterministic permutation parity - the old behavior could lead to inconsistent results or appear to hang in rare instances.
 - **Stereochemistry tracking**: Inversions of tetrahedral centers are counted as a changed atom, and included in the extracted template
 - **Spectator tracking**: Spectator molecules are included in extracted template dictionaries
+- **extract_from_reaction_smiles convenience function**: Extract templates directly from an atom mapped reaction SMILES
 
 ## General changes
 
@@ -33,16 +35,16 @@ The interface (`rdchiralRun`, `rdchiralRunText`, `rdchiralReaction`, `rdchiralRe
 
 ## Consistency with the upstream library
 
-The changes above result in minor differences in behavior compared to the original library. In most cases where behavior is different, rdchiral_plus produces the more accurate result. As an example, the table below shows the roundtrip success rate of extracting a template from an atom mapped reaction SMILES, applying that template to the product SMILES, and then recovering the expected reactant SMILES. rdchiral_plus reduces the number of incorrect roundtrips by 98% compared to rdchiral, and 99% compared to rdchiral_cpp, achieving a 99.96% roundtrip success rate for extract template -> apply to products -> recover expected reactants. 
+The changes above result in minor differences in behavior compared to the original library. In cases where behavior is different, rdchiral_plus typically produces the more accurate result. As an example, the table below shows the roundtrip success rate of extracting a template from an atom mapped reaction SMILES, applying that template to the product SMILES, and then recovering the expected reactant SMILES. rdchiral_plus reduces the number of incorrect roundtrips by 98% compared to RDChiral, and 99% compared to rdchiral_cpp, achieving a 99.96% roundtrip success rate for extract template -> apply to products -> recover expected reactants. 
 
 | library | successful roundtrips | success rate |
 | --- | :---: | :---: |
-| rdchiral | 49223 / 50016 | 98.41% |
+| RDChiral | 49223 / 50016 | 98.41% |
 | rdchiral_cpp | 48694 / 50016 | 97.36% |
 | rdchiral_plus | 49998 / 50016 | 99.96% |
 
 
-See [here](docs/consistency.md) for details on how consistency is measured against the original library and full details of what changes you can expect compared to the original rdchiral library.
+See [here](docs/consistency.md) for details on how consistency is measured against the original library and full details of what changes you can expect compared to the original RDChiral library.
 
 ## Requirements
 
@@ -79,8 +81,8 @@ from rdchiral import rdchiralRun, rdchiralRunText, rdchiralReaction, rdchiralRea
 # Run directly from SMARTS and SMILES strings
 # This is slower than pre-initializing rdchiralReaction and rdchiralReactants when
 # processing a large number of reactions
-reaction_smarts = '[C:1][OH:2]>>[C:1][O:2][C]'
-reactant_smiles = 'OCC(=O)OCCCO'
+reaction_smarts = "[C:1][OH:2]>>[C:1][O:2][C]"
+reactant_smiles = "OCC(=O)OCCCO"
 outcomes = rdchiralRunText(reaction_smarts, reactant_smiles)
 print(outcomes)
 
@@ -109,6 +111,6 @@ rdchiral_plus is licensed under the [MIT license](https://github.com/denovochem/
 
 ## References
 
-- [Original rdchiral paper](https://pubs.acs.org/doi/abs/10.1021/acs.jcim.9b00286)
+- [Original RDChiral paper](https://pubs.acs.org/doi/abs/10.1021/acs.jcim.9b00286)
 - [rdchiral repo](https://github.com/connorcoley/rdchiral)
 - [rdchiral_cpp repo](https://gitlab.com/ljn917/rdchiral_cpp)

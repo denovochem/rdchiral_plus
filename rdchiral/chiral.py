@@ -87,7 +87,7 @@ def atom_chirality_matches(a_tmp: Chem.Atom, a_mol: Chem.Atom) -> int:
     """
     Checks for consistency in chirality between a template atom and a molecule atom.
 
-    Also checks to see if chirality needs to be inverted in copy_chirality
+    Also checks to see if chirality needs to be inverted in copy_chirality.
 
     Args:
         a_tmp (rdkit.Chem.rdchem.Atom): Template atom to compare.
@@ -99,7 +99,19 @@ def atom_chirality_matches(a_tmp: Chem.Atom, a_mol: Chem.Atom) -> int:
             -1 if chirality matches but is the opposite (inversion needed).
             0 if an explicit NOT match (chiral template vs. achiral molecule that
               could have been chiral).
-            2 if the comparison is ambiguous or both atoms are achiral.
+            2 if the comparison is ambiguous, both atoms are achiral, or the two
+              atoms have different numbers of unmatched substituents (e.g., a
+              reaction added or removed a neighbor, making parity comparison
+              meaningless).
+
+    Note:
+        When both atoms are chiral and have at least 3 heavy neighbors, the
+        function compares the parity of their neighbor atom-map-number orderings.
+        If the two atoms have different numbers of unmatched substituents (i.e.,
+        ``len(only_in_src) != len(only_in_mol)``), the parity comparison is not
+        meaningful and the function returns 2. This can occur when a reaction
+        template adds a new substituent to a stereocenter, creating a degree
+        mismatch between the reactant and product atoms.
     """
     if a_mol.GetChiralTag() == ChiralType.CHI_UNSPECIFIED:
         if a_tmp.GetChiralTag() == ChiralType.CHI_UNSPECIFIED:
@@ -146,7 +158,7 @@ def atom_chirality_matches(a_tmp: Chem.Atom, a_mol: Chem.Atom) -> int:
             ::-1
         ]  # reverse for popping
         only_in_mol: List[int] = [i for i in mapnums_mol if i not in mapnums_tmp]
-        if len(only_in_src) <= 1 and len(only_in_mol) <= 1:
+        if len(only_in_src) == len(only_in_mol) and len(only_in_src) <= 1:
             tmp_parity = parity4(mapnums_tmp)
             mol_parity = parity4(
                 [i if i in mapnums_tmp else only_in_src.pop() for i in mapnums_mol]

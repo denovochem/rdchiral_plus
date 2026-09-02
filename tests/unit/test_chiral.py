@@ -98,6 +98,13 @@ def test_atom_chirality_matches_returns_2_when_neighbor_count_ambiguous():
     assert atom_chirality_matches(a_tmp, a_mol) == 2
 
 
+def test_atom_chirality_matches_returns_2_when_degree_mismatch():
+    a_tmp = _atom_from_smiles("[C@@:1]([CH3:2])([NH2:3])([OH:4])[F:5]", 1)
+    a_mol = _atom_from_smarts("[C@@:1]([CH3:2])([NH2:3])([OH:4])([F:5])[Cl:6]", 1)
+
+    assert atom_chirality_matches(a_tmp, a_mol) == 2
+
+
 @pytest.mark.parametrize(
     ("template_smarts", "mol_smiles", "expected"),
     [
@@ -148,6 +155,18 @@ def test_copy_chirality_inverts_when_atom_chirality_matches_returns_minus_one():
     assert a_new.GetChiralTag() != ChiralType.CHI_UNSPECIFIED
     assert a_src.GetChiralTag() != a_new.GetChiralTag()
     assert atom_chirality_matches(a_src, a_new) == 1
+
+
+def test_copy_chirality_does_not_crash_on_degree_mismatch():
+    a_src = _atom_from_smiles("[C@@:1]([CH3:2])([NH2:3])([OH:4])[F:5]", 1)
+    a_new = _atom_from_smarts("[C@@:1]([CH3:2])([NH2:3])([OH:4])([F:5])[Cl:6]", 1)
+
+    assert a_src.GetDegree() == 4
+    assert a_new.GetDegree() == 5
+
+    copy_chirality(a_src, a_new)
+
+    assert a_new.GetChiralTag() == a_src.GetChiralTag()
 
 
 def test_template_atom_could_have_been_tetra_sulfoxide_sulfur_degree_three_true():

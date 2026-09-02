@@ -10,6 +10,7 @@ from rdchiral.bonds import (
     get_atoms_across_double_bonds,
 )
 from rdchiral.chiral import template_atom_could_have_been_tetra
+from rdchiral.smarts_constraints import extract_product_smarts_constraints
 
 BondDirOpposite = {
     AllChem.BondDir.ENDUPRIGHT: AllChem.BondDir.ENDDOWNRIGHT,
@@ -33,6 +34,9 @@ class rdchiralReaction(object):
         atoms_pt_map (dict): Dictionary mapping from atom map number to RDKit Atom for products
         atoms_rt_idx_to_map (dict): Dictionary mapping from atom idx to atom map number for reactants
         atoms_pt_idx_to_map (dict): Dictionary mapping from atom idx to atom map number for products
+        product_smarts_constraints (list): Pre-computed per-atom SMARTS patterns for
+            product template atoms with recursive or non-trivial constraints. Used by
+            enforce_reactants_smarts_constraints filtering.
 
     Args:
         reaction_smarts (str): Reaction SMARTS string
@@ -84,6 +88,12 @@ class rdchiralReaction(object):
         self._template_has_doublebond_stereo: Optional[bool] = None
         self._template_is_chiral: Optional[bool] = None
 
+        # Pre-computed product-side SMARTS constraint patterns for
+        # enforce_reactants_smarts_constraints filtering.
+        self._product_smarts_constraints: Optional[List[Tuple[int, int, Chem.Mol]]] = (
+            None
+        )
+
         if not lazy_init:
             _ = self.rxn
             self._ensure_templates()
@@ -102,6 +112,7 @@ class rdchiralReaction(object):
             _ = self.template_has_tetra_stereo
             _ = self.template_has_doublebond_stereo
             _ = self.template_is_chiral
+            _ = self.product_smarts_constraints
 
     @property
     def rxn(self) -> rdChemReactions.ChemicalReaction:
@@ -328,6 +339,24 @@ class rdchiralReaction(object):
                 self._template_has_tetra_stereo or self._template_has_doublebond_stereo
             )
         return self._template_is_chiral
+
+    @property
+    def product_smarts_constraints(self) -> List[Tuple[int, int, Chem.Mol]]:
+        """
+        Pre-computed per-atom SMARTS patterns for product template atoms with constraints.
+
+        Returns:
+            List[Tuple[int, int, Chem.Mol]]: A list of ``(template_index,
+            atom_mapnum, pattern_mol)`` tuples for product atoms that carry
+            recursive SMARTS or non-trivial constraints (H, D, charge, etc.).
+            Returns an empty list when no product atoms have meaningful
+            constraints, enabling a zero-overhead fast path.
+        """
+        if self._product_smarts_constraints is None:
+            self._product_smarts_constraints = extract_product_smarts_constraints(
+                self.rxn
+            )
+        return self._product_smarts_constraints
 
     def reset(self) -> None:
         """

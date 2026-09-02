@@ -1,7 +1,7 @@
 # rdchiral_plus
 Wrapper for RDKit's RunReactants to improve stereochemistry handling
 
-This repository is a fork of [rdchiral](https://github.com/connorcoley/rdchiral). It has been modified for improved performance while maintaining high consistency with the upstream library. These modifications provide speed that is marginally slower than the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)), but has the benefits of being written in Python. This library is pip installable cross platform.
+This repository is a fork of [RDChiral](https://github.com/connorcoley/rdchiral). It has been modified for improved speed and accuracy while maintaining high interface consistency with the upstream library. These modifications provide speed that is marginally slower than the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)), but has the benefits of being written in Python. This library is pip installable cross platform.
 
 ## Requirements
 
@@ -35,8 +35,8 @@ RDCHIRAL_USE_MYPYC=1 pip install "git+https://github.com/denovochem/rdchiral_plu
 from rdchiral import rdchiralRun, rdchiralRunText, rdchiralReaction, rdchiralReactants
 
 # Run directly from SMARTS and SMILES (slower than pre-initializing rdchiralReaction and rdchiralReactants when processing a large numbers of reactions)
-reaction_smarts = '[C:1][OH:2]>>[C:1][O:2][C]'
-reactant_smiles = 'OCC(=O)OCCCO'
+reaction_smarts = "[C:1][OH:2]>>[C:1][O:2][C]"
+reactant_smiles = "OCC(=O)OCCCO"
 outcomes = rdchiralRunText(reaction_smarts, reactant_smiles)
 print(outcomes)
 
@@ -60,7 +60,7 @@ See the [README](https://github.com/denovochem/rdchiral_plus#changes-to-template
 
 ## Consistency with the upstream library
 
-See [consistency](consistency.md) for details on how consistency is measured against the original library and full details of what changes you can expect compared to the original rdchiral library.
+See [consistency](consistency.md) for details on how consistency is measured against the original library and full details of what changes you can expect compared to the original RDChiral library.
 
 ## Contributing
 
@@ -73,6 +73,6 @@ rdchiral_plus is licensed under the [MIT license](https://github.com/denovochem/
 
 ## References
 
-- [Original rdchiral paper](https://pubs.acs.org/doi/abs/10.1021/acs.jcim.9b00286)
+- [Original RDChiral paper](https://pubs.acs.org/doi/abs/10.1021/acs.jcim.9b00286)
 - [rdchiral repo](https://github.com/connorcoley/rdchiral)
 - [rdchiral_cpp repo](https://gitlab.com/ljn917/rdchiral_cpp)

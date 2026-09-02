@@ -18,6 +18,7 @@ from rdchiral.chiral import (
 from rdchiral.clean import combine_enantiomers_into_racemic
 from rdchiral.initialization import rdchiralReactants, rdchiralReaction
 from rdchiral.logging_config import logger
+from rdchiral.smarts_constraints import filter_outcomes_by_smarts_constraints
 from rdchiral.utils import atoms_are_different, strip_map_numbers_from_smiles
 
 _ChangesT = TypeVar("_ChangesT")
@@ -94,6 +95,7 @@ def rdchiralRunText(
     return_mapped: bool = False,
     max_depth: int = 1,
     max_products: int = 100,
+    enforce_reactants_smarts_constraints: bool = False,
 ) -> Union[List[str], Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]]:
     """
     Run a reaction by constructing `rdchiralReaction` and `rdchiralReactants` from text inputs.
@@ -111,6 +113,11 @@ def rdchiralRunText(
         return_mapped (bool): If True, also return per-outcome atom-mapped information.
         max_depth (int): Maximum number of iterative depth levels to explore (default: 1).
         max_products (int): Maximum number of products to return (default: 100).
+        enforce_reactants_smarts_constraints (bool): If True, post-filter outcomes to
+            enforce product-side SMARTS constraints (recursive and non-recursive) that
+            RDKit's ``RunReactants`` ignores. Uses ``GetSubstructMatches`` with the full
+            atom query aligned via ``old_mapno``. Defaults to False for backwards
+            compatibility.
 
     Returns:
         Union[List[str], Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]]:
@@ -135,6 +142,7 @@ def rdchiralRunText(
         skip_reset=True,
         max_depth=max_depth,
         max_products=max_products,
+        enforce_reactants_smarts_constraints=enforce_reactants_smarts_constraints,
     )
 
 
@@ -144,6 +152,7 @@ def rdchiral_step(
     keep_mapnums: bool = False,
     combine_enantiomers: bool = True,
     skip_reset: bool = False,
+    enforce_reactants_smarts_constraints: bool = False,
 ) -> List[str]:
     """
     Apply a pre-initialized `rdchiralReaction` template to pre-initialized reactants.
@@ -161,6 +170,10 @@ def rdchiral_step(
             enantiomers are retained and their achiral racemic forms are also appended
             to the results.
         skip_reset (bool): If True, skip resetting the reaction object before running.
+        enforce_reactants_smarts_constraints (bool): If True, post-filter outcomes to
+            enforce product-side SMARTS constraints (recursive and non-recursive) that
+            RDKit's ``RunReactants`` ignores. Defaults to False for backwards
+            compatibility.
 
     Returns:
         List[str]: A list of product SMILES strings.
@@ -195,6 +208,13 @@ def rdchiral_step(
     if not outcomes:
         return []
 
+    if enforce_reactants_smarts_constraints:
+        outcomes = filter_outcomes_by_smarts_constraints(
+            outcomes, rxn.product_smarts_constraints
+        )
+        if not outcomes:
+            return []
+
     outcomes = deduplicate_outcomes(outcomes, reactants, rxn)
 
     result = return_non_stereo_outcome_early(outcomes, reactants, rxn, keep_mapnums)
@@ -224,6 +244,7 @@ def rdchiral_step_return_mapped(
     keep_mapnums: bool = False,
     combine_enantiomers: bool = True,
     skip_reset: bool = False,
+    enforce_reactants_smarts_constraints: bool = False,
 ) -> Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]:
     """
     Apply a pre-initialized `rdchiralReaction` template to pre-initialized reactants,
@@ -242,6 +263,10 @@ def rdchiral_step_return_mapped(
             enantiomers are retained and their achiral racemic forms are also appended
             to the results.
         skip_reset (bool): If True, skip resetting the reaction object before running.
+        enforce_reactants_smarts_constraints (bool): If True, post-filter outcomes to
+            enforce product-side SMARTS constraints (recursive and non-recursive) that
+            RDKit's ``RunReactants`` ignores. Defaults to False for backwards
+            compatibility.
 
     Returns:
         Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]:
@@ -280,6 +305,13 @@ def rdchiral_step_return_mapped(
 
     if not outcomes:
         return ([], {})
+
+    if enforce_reactants_smarts_constraints:
+        outcomes = filter_outcomes_by_smarts_constraints(
+            outcomes, rxn.product_smarts_constraints
+        )
+        if not outcomes:
+            return ([], {})
 
     outcomes = deduplicate_outcomes(outcomes, reactants, rxn)
 
@@ -337,6 +369,7 @@ def rdchiralRun(
     skip_reset: bool = False,
     max_depth: int = 1,
     max_products: int = 100,
+    enforce_reactants_smarts_constraints: bool = False,
 ) -> Union[List[str], Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]]:
     """
     Iteratively apply an rdchiral reaction template to reactants across multiple depth levels.
@@ -359,6 +392,10 @@ def rdchiralRun(
             max_depth > 1, as reset is forced for multi-depth iterations.
         max_depth (int): Maximum number of iterative depth levels to explore (default: 1).
         max_products (int): Maximum number of products to return (default: 100).
+        enforce_reactants_smarts_constraints (bool): If True, post-filter outcomes to
+            enforce product-side SMARTS constraints (recursive and non-recursive) that
+            RDKit's ``RunReactants`` ignores. Defaults to False for backwards
+            compatibility.
 
     Returns:
         Union[List[str], Tuple[List[str], Dict[str, Tuple[str, Tuple[int, ...]]]]]:
@@ -382,6 +419,7 @@ def rdchiralRun(
                 keep_mapnums=keep_mapnums,
                 combine_enantiomers=combine_enantiomers,
                 skip_reset=skip_reset,
+                enforce_reactants_smarts_constraints=enforce_reactants_smarts_constraints,
             )
         else:
             return rdchiral_step(
@@ -390,6 +428,7 @@ def rdchiralRun(
                 keep_mapnums=keep_mapnums,
                 combine_enantiomers=combine_enantiomers,
                 skip_reset=skip_reset,
+                enforce_reactants_smarts_constraints=enforce_reactants_smarts_constraints,
             )
 
     # if max_depth is going to be greater than 1, we should force reset rxn
@@ -422,6 +461,7 @@ def rdchiralRun(
                 keep_mapnums=True,
                 combine_enantiomers=False,
                 skip_reset=skip_reset,
+                enforce_reactants_smarts_constraints=enforce_reactants_smarts_constraints,
             )
             custom_reactant_mapping = True
             if not product_smiles:
