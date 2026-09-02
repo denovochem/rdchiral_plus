@@ -43,6 +43,7 @@
 !rdchiral/initialization.py
 !rdchiral/logging_config.py
 !rdchiral/main.py
+!rdchiral/smarts_constraints.py
 !rdchiral/template_extractor.py
 !rdchiral/utils.py
 
@@ -56,6 +57,7 @@
 !tests/unit/test_initialization.py
 !tests/unit/test_template_extractor.py
 !tests/unit/test_benchmark_utils.py
+!tests/unit/test_smarts_constraints.py
 !tests/integration/
 !tests/integration/test_atom_mapping.py
 !tests/integration/test_rdchiral.py
@@ -63,6 +65,8 @@
 !tests/integration/test_rdchiral_cases.json
 !tests/integration/test_extraction.py
 !tests/integration/test_extraction_cases.json
+!tests/integration/test_smarts_constraints_integration.py
+!tests/integration/test_smarts_constraints_cases.json
 
 !examples/
 !examples/example_notebook.ipynb
