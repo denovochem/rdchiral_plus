@@ -1,7 +1,7 @@
 # rdchiral_plus
 Wrapper for RDKit's RunReactants to improve stereochemistry handling
 
-This repository is a fork of [RDChiral](https://github.com/connorcoley/rdchiral). It has been modified for improved performance while maintaining high consistency with the upstream library. These modifications provide speed that is marginally slower than the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)), but has the benefits of being written in Python. This library is pip installable cross platform.
+This repository is a fork of [RDChiral](https://github.com/connorcoley/rdchiral). It has been modified for improved speed and accuracy while maintaining high interface consistency with the upstream library. These modifications provide speed that is marginally slower than the fast C++ version ([rdchiral_cpp](https://gitlab.com/ljn917/rdchiral_cpp)), but has the benefits of being written in Python. This library is pip installable cross platform.
 
 ## Requirements
 
