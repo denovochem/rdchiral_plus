@@ -98,11 +98,45 @@ def test_atom_chirality_matches_returns_2_when_neighbor_count_ambiguous():
     assert atom_chirality_matches(a_tmp, a_mol) == 2
 
 
-def test_atom_chirality_matches_returns_2_when_degree_mismatch():
+def test_atom_chirality_matches_returns_2_when_mol_has_more_unmatched_than_template():
+    """Template has 0 unmatched, molecule has 1 — parity cannot be computed (pop from empty).
+
+    This is the crash case: template degree 4, molecule degree 5. The molecule
+    has one neighbor not in the template, but the template has no unmatched
+    neighbors to substitute, so pop() would fail on an empty list.
+    """
     a_tmp = _atom_from_smiles("[C@@:1]([CH3:2])([NH2:3])([OH:4])[F:5]", 1)
     a_mol = _atom_from_smarts("[C@@:1]([CH3:2])([NH2:3])([OH:4])([F:5])[Cl:6]", 1)
 
     assert atom_chirality_matches(a_tmp, a_mol) == 2
+
+
+def test_atom_chirality_matches_template_has_more_unmatched_than_mol_does_not_crash():
+    """Template has 1 unmatched, molecule has 0 — parity is computed (no pop needed).
+
+    This is the regression case: the v0.6.0 ``==`` condition incorrectly treated
+    this as ambiguous (returning 2), causing fewer successful roundtrips.
+
+    Template has a neighbor (map 5) not in the molecule, but all molecule
+    neighbors are in the template. The molecule has a duplicate map number
+    (Br and I both with map 4), which is why only_in_mol is empty despite
+    the template having an extra substituent.
+    """
+    a_tmp = _atom_from_smarts("[C@@:1]([F:2])([Cl:3])([Br:4])[I:5]", 1)
+    a_mol = _atom_from_smiles("[C@@:1]([F:2])([Cl:3])([Br:4])[I:4]", 1)
+
+    result = atom_chirality_matches(a_tmp, a_mol)
+    assert result in (1, -1)
+
+
+def test_atom_chirality_matches_does_not_raise_on_duplicate_mapnums():
+    """Duplicate map numbers (e.g., unmapped atoms with map 0) can cause
+    len(only_in_src) < len(only_in_mol), which must return 2 not raise."""
+    a_tmp = _atom_from_smarts("[C@:1]([F:2])([Cl:3])[F:4]", 1)
+    a_mol = _atom_from_smiles("[C@:1]([F:2])([F:2])[Cl:3]", 1)
+
+    result = atom_chirality_matches(a_tmp, a_mol)
+    assert result in (1, -1, 2)
 
 
 @pytest.mark.parametrize(

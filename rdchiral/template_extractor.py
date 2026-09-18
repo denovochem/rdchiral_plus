@@ -1376,22 +1376,24 @@ def get_fragments_for_changed_atoms(
         for a in mol_without_map_nums.GetAtoms():
             a.SetAtomMapNum(0)
 
+        iso_smiles = use_stereochemistry
         try:
             this_fragment = rdmolfiles.MolFragmentToSmiles(
                 mol_without_map_nums,
                 atoms_to_use,
                 atomSymbols=symbols,
                 allHsExplicit=True,
-                isomericSmiles=use_stereochemistry,
+                isomericSmiles=iso_smiles,
                 allBondsExplicit=True,
             )
         except RuntimeError:
+            iso_smiles = False
             this_fragment = rdmolfiles.MolFragmentToSmiles(
                 mol_without_map_nums,
                 atoms_to_use,
                 atomSymbols=symbols,
                 allHsExplicit=True,
-                isomericSmiles=False,
+                isomericSmiles=iso_smiles,
                 allBondsExplicit=True,
             )
 
@@ -1421,10 +1423,15 @@ def get_fragments_for_changed_atoms(
                     if atom_chirality_matches(frag_atom, src_atom) == -1:
                         src_idx = src_atom.GetIdx()
                         prev = symbols[src_idx]
+                        mol_atom = mol_without_map_nums.GetAtomWithIdx(src_idx)
                         if "@@" in prev:
                             symbols[src_idx] = prev.replace("@@", "@")
+                            if mol_atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW:
+                                mol_atom.SetChiralTag(Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW)
                         elif "@" in prev:
                             symbols[src_idx] = prev.replace("@", "@@")
+                            if mol_atom.GetChiralTag() == Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW:
+                                mol_atom.SetChiralTag(Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW)
                         needs_correction = True
 
                 if needs_correction:
@@ -1434,7 +1441,7 @@ def get_fragments_for_changed_atoms(
                             atoms_to_use,
                             atomSymbols=symbols,
                             allHsExplicit=True,
-                            isomericSmiles=use_stereochemistry,
+                            isomericSmiles=iso_smiles,
                             allBondsExplicit=True,
                         )
                     except RuntimeError:
