@@ -162,6 +162,36 @@ def _build_conda_env(*, env_dir: Path, reinstall: bool) -> None:
         )
 
 
+def _build_rdkit_env(*, venv_dir: Path, reinstall: bool) -> None:
+    """
+    Build a uv virtual environment with only rdkit installed.
+
+    Used for the naive RDKit baseline benchmark, which must not have rdchiral
+    importable.
+
+    Args:
+        venv_dir (Path): Target directory for the virtual environment.
+        reinstall (bool): If True, delete and recreate the venv if it already exists.
+    """
+    if reinstall and venv_dir.exists():
+        shutil.rmtree(venv_dir)
+
+    if not venv_dir.exists():
+        _run(["uv", "venv", str(venv_dir)])
+
+    venv_python = _venv_python(venv_dir)
+    _run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(venv_python),
+            "rdkit",
+        ],
+    )
+
+
 def _build_env(
     *, repo_root: Path, venv_dir: Path, use_mypyc: bool, reinstall: bool
 ) -> None:
@@ -223,6 +253,35 @@ def _verify_import(*, python: Path) -> None:
                 str(python),
                 "-c",
                 "import rdchiral.main; print(rdchiral.main.__file__)",
+            ],
+            cwd=tmpdir,
+        )
+
+
+def _verify_rdkit_import(*, python: Path) -> None:
+    """
+    Verify that rdkit is importable and rdchiral is NOT importable.
+
+    The naive RDKit baseline must run without rdchiral installed so timings
+    reflect pure RDKit. Runs a temporary Python process that imports
+    rdkit.Chem.rdChemReactions and asserts that rdchiral cannot be found.
+
+    Args:
+        python (Path): Path to the Python executable to test.
+    """
+    with tempfile.TemporaryDirectory(prefix="rdkit_importcheck_") as d:
+        tmpdir = Path(d)
+        _run(
+            [
+                str(python),
+                "-c",
+                (
+                    "import importlib.util;"
+                    "from rdkit.Chem import rdChemReactions;"
+                    "assert importlib.util.find_spec('rdchiral') is None, "
+                    "'rdchiral must not be installed in the rdkit baseline env';"
+                    "print('rdkit OK, rdchiral absent')"
+                ),
             ],
             cwd=tmpdir,
         )
@@ -306,6 +365,16 @@ def main() -> int:
         help="Path for the rdchiral_cpp conda env (default: .conda-rdchiral-cpp)",
     )
     parser.add_argument(
+        "--venv-rdkit",
+        default=".venv-rdkit",
+        help="Path for the naive RDKit baseline venv (default: .venv-rdkit)",
+    )
+    parser.add_argument(
+        "--rdkit-benchmark",
+        default="rdkit_benchmark_script.py",
+        help="Path to the RDKit baseline benchmark script (default: rdkit_benchmark_script.py)",
+    )
+    parser.add_argument(
         "--reinstall",
         action="store_true",
         help="Delete and recreate venvs before installing",
@@ -337,6 +406,11 @@ def main() -> int:
         help="Skip the rdchiral_cpp (conda-forge) environment",
     )
     parser.add_argument(
+        "--skip-rdkit",
+        action="store_true",
+        help="Skip the naive RDKit baseline environment",
+    )
+    parser.add_argument(
         "--original-rdchiral-spec",
         default="git+https://github.com/connorcoley/rdchiral.git",
         help="pip install spec for the original rdchiral environment (default: git+https://github.com/connorcoley/rdchiral.git)",
@@ -350,10 +424,17 @@ def main() -> int:
     if not benchmark_path.exists():
         raise FileNotFoundError(f"Benchmark script not found: {benchmark_path}")
 
+    rdkit_benchmark_path = (repo_root / "scripts" / args.rdkit_benchmark).resolve()
+    if not rdkit_benchmark_path.exists():
+        raise FileNotFoundError(
+            f"RDKit benchmark script not found: {rdkit_benchmark_path}"
+        )
+
     venv_py = (repo_root / args.venv_py).resolve()
     venv_mypyc = (repo_root / args.venv_mypyc).resolve()
     venv_default = (repo_root / args.venv_default).resolve()
     venv_cpp = (repo_root / args.venv_cpp).resolve()
+    venv_rdkit = (repo_root / args.venv_rdkit).resolve()
 
     def _env_pure_python() -> None:
         print("\n=== Building pure-python environment ===\n")
@@ -431,6 +512,21 @@ def main() -> int:
             extra_args=extra_args,
         )
 
+    def _env_rdkit() -> None:
+        print("\n=== Building naive rdkit environment ===\n")
+        _build_rdkit_env(venv_dir=venv_rdkit, reinstall=args.reinstall)
+        rdkit_python = _venv_python(venv_rdkit)
+        print("--- Import verification (rdkit) ---")
+        _verify_rdkit_import(python=rdkit_python)
+        print("--- Running benchmark (rdkit) ---")
+        extra_args = ["--save-file-prefix", "rdkit"]
+        _run_benchmark(
+            python=rdkit_python,
+            repo_root=repo_root,
+            benchmark_path=rdkit_benchmark_path,
+            extra_args=extra_args,
+        )
+
     env_steps: list[tuple[str, Callable[[], None]]] = []
     if not args.skip_pure_python:
         env_steps.append(("pure_python", _env_pure_python))
@@ -440,6 +536,8 @@ def main() -> int:
         env_steps.append(("original", _env_original))
     if not args.skip_cpp:
         env_steps.append(("cpp", _env_cpp))
+    if not args.skip_rdkit:
+        env_steps.append(("rdkit", _env_rdkit))
 
     if not env_steps:
         raise SystemExit("All environments skipped. Nothing to do.")

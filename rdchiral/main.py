@@ -217,13 +217,25 @@ def rdchiral_step(
 
     outcomes = deduplicate_outcomes(outcomes, reactants, rxn)
 
-    result = return_non_stereo_outcome_early(outcomes, reactants, rxn, keep_mapnums)
-    if result is not None:
-        return result
+    can_early, merge_needed, outcomes = can_return_early(
+        outcomes,
+        reactants,
+        rxn,
+        keep_mapnums,
+        enforce_reactants_smarts_constraints,
+    )
+    if can_early:
+        return format_early_outcomes(outcomes)
 
     final_outcomes = set()
     for outcome in outcomes:
-        smiles_new, _ = handle_outcomes(outcome, reactants, rxn, keep_mapnums)
+        smiles_new, _ = handle_outcomes(
+            outcome,
+            reactants,
+            rxn,
+            keep_mapnums,
+            has_duplicated_atoms=None if merge_needed else False,
+        )
         if smiles_new is None:
             continue
 
@@ -712,19 +724,171 @@ def deduplicate_outcomes(
     return outcomes
 
 
-def return_non_stereo_outcome_early(
+def _template_atom_env_unchanged(rxn: rdchiralReaction, mapnum: int) -> bool:
+    """
+    Check whether a mapped template atom has identical bonding in the reactant and product templates.
+
+    Args:
+        rxn (rdchiralReaction): Initialized reaction container.
+        mapnum (int): Atom-map number shared by the reactant and product templates.
+
+    Returns:
+        bool: True if the atom exists in both templates with the same set of
+            (neighbor map number, bond type) bonds; False if the atom is absent
+            from either template or its bonding differs.
+    """
+    rt_atom = rxn.atoms_rt_map.get(mapnum)
+    pt_atom = rxn.atoms_pt_map.get(mapnum)
+    if rt_atom is None or pt_atom is None:
+        return False
+
+    def _env(atom: Chem.Atom) -> List[Tuple[int, str]]:
+        mol = atom.GetOwningMol()
+        return sorted(
+            (
+                mol.GetAtomWithIdx(b.GetOtherAtomIdx(atom.GetIdx())).GetAtomMapNum(),
+                str(b.GetBondType()),
+            )
+            for b in atom.GetBonds()
+        )
+
+    return _env(rt_atom) == _env(pt_atom)
+
+
+def _reaction_touches_stereo(
+    outcomes: Tuple[Tuple[Chem.Mol, ...], ...],
+    reactants: rdchiralReactants,
+    rxn: rdchiralReaction,
+) -> bool:
+    """
+    Check whether reactant stereochemistry requires the full stereo-handling pipeline.
+
+    Returns True when the template itself specifies stereochemistry, when the
+    reactants contain a stereogenic double bond (handled conservatively), or when
+    any reactant stereocenter cannot have its chiral tag carried through by a
+    re-run on the chiral reactant. RDKit preserves a reactant atom's chiral tag
+    only on product atoms derived from mapped template atoms, and only reliably
+    when that atom's bonding is unchanged between the reactant and product
+    templates. A stereocenter matched to an unmapped template atom loses its tag,
+    one matched to a mapped atom with changed bonding may be assigned incorrect
+    parity, and one matched to a template atom that could have specified
+    chirality (but did not) is rejected by `validate_chiral_match`; all three
+    require the full pipeline.
+
+    Args:
+        outcomes (Tuple[Tuple[Chem.Mol, ...], ...]): Outcomes returned by reaction
+            application, where each element is an outcome containing one or more
+            product molecules.
+        reactants (rdchiralReactants): Initialized reactants container.
+        rxn (rdchiralReaction): Initialized reaction container.
+
+    Returns:
+        bool: True if stereochemistry may be created, destroyed, or altered by the
+            reaction; False if every stereocenter is either absent from the
+            products or carried through unchanged by a chiral re-run.
+
+    Note:
+        Reactant atom-map numbers cannot be compared to template map numbers
+        directly: under default initialization they are positional (atom index + 1)
+        and share no namespace with the template. The outcome atom properties
+        `react_atom_idx` and `old_mapno` provide the correct join.
+    """
+    if rxn.template_is_chiral:
+        return True
+    if not reactants.reactants_is_chiral:
+        return False
+    if reactants.reactants_has_doublebond_stereo:
+        # Conservative: stereogenic double bonds always use the full pipeline.
+        return True
+
+    stereo_idxs = {
+        a.GetIdx()
+        for a in reactants.reactants.GetAtoms()
+        if a.GetChiralTag() != ChiralType.CHI_UNSPECIFIED
+    }
+    for outcome in outcomes:
+        # For each stereocenter, collect the map numbers of the template atoms it
+        # was matched to within this outcome (0 = unmapped template atom).
+        stereo_match_mapnums: Dict[int, set] = {i: set() for i in stereo_idxs}
+        for mol in outcome:
+            for a in mol.GetAtoms():
+                if not a.HasProp("react_atom_idx"):
+                    continue
+                ridx = a.GetIntProp("react_atom_idx")
+                if ridx in stereo_match_mapnums:
+                    mapno = a.GetIntProp("old_mapno") if a.HasProp("old_mapno") else 0
+                    stereo_match_mapnums[ridx].add(mapno)
+        for mapnos in stereo_match_mapnums.values():
+            if not mapnos or 0 in mapnos:
+                # Stereocenter missing from this outcome's mapped atoms: it was
+                # either deleted or matched to an unmapped template atom, whose
+                # product atoms carry no react_atom_idx and drop the chiral tag.
+                return True
+            for mapno in mapnos:
+                rt_atom = rxn.atoms_rt_map.get(mapno)
+                pt_atom = rxn.atoms_pt_map.get(mapno)
+                if (
+                    rt_atom is not None
+                    and template_atom_could_have_been_tetra(rt_atom)
+                ) or (
+                    pt_atom is not None
+                    and template_atom_could_have_been_tetra(pt_atom)
+                ):
+                    # Template could have specified chirality but did not: the
+                    # match is ambiguous and validate_chiral_match rejects it.
+                    return True
+                if not _template_atom_env_unchanged(rxn, mapno):
+                    # Mapped match with changed bonding: carried tag may be wrong.
+                    return True
+    return False
+
+
+def _outcome_has_duplicated_atoms(outcome: Tuple[Chem.Mol, ...]) -> bool:
+    """
+    Check whether any reactant atom was duplicated across an outcome's product fragments.
+
+    For pseudo-intramolecular outcomes (e.g., ring-opening templates), RDKit copies
+    reactant atoms into multiple product fragments; these outcomes require the
+    map-number-based merge in `merge_outcomes_intramolecular`. Every reactant-derived
+    product atom carries a `react_atom_idx` property identifying its source reactant
+    atom, so duplication is detectable directly on the raw outcome.
+
+    Args:
+        outcome (Tuple[Chem.Mol, ...]): One outcome from RDKit reaction application,
+            where each element is a product molecule fragment.
+
+    Returns:
+        bool: True if any reactant atom index appears on more than one product atom
+            across the outcome's fragments.
+    """
+    seen = set()
+    for mol in outcome:
+        for a in mol.GetAtoms():
+            if a.HasProp("react_atom_idx"):
+                idx = a.GetProp("react_atom_idx")
+                if idx in seen:
+                    return True
+                seen.add(idx)
+    return False
+
+
+def can_return_early(
     outcomes: Tuple[Tuple[Chem.Mol, ...], ...],
     reactants: rdchiralReactants,
     rxn: rdchiralReaction,
     keep_mapnums: bool = False,
-) -> Optional[List[str]]:
+    enforce_reactants_smarts_constraints: bool = False,
+) -> Tuple[bool, bool, Tuple[Tuple[Chem.Mol, ...], ...]]:
     """
-    Return a non-stereochemical outcome early when both reactants and template are achiral.
+    Determine whether reaction outcomes can bypass the full outcome-handling pipeline.
 
-    This helper is an optimization used by the main product enumeration logic. When both the
-    input reactants and the reaction template are achiral, and the reaction application
-    produced exactly one outcome containing exactly one product molecule, the product can be
-    returned directly without stereochemistry handling.
+    This helper is an optimization used by the main product enumeration logic. When the
+    reaction cannot affect stereochemistry and no outcome requires the map-number-based
+    fragment merge, the outcomes may be formatted directly by `format_early_outcomes`
+    without stereochemistry handling. When the reactants contain only spectator
+    stereochemistry (stereocenters and stereogenic bonds outside the reaction core),
+    the reaction is re-run on the chiral reactant so RDKit carries the stereo through
+    to the products.
 
     Args:
         outcomes (Tuple[Tuple[Chem.Mol, ...], ...]): Outcomes returned by reaction application,
@@ -734,43 +898,108 @@ def return_non_stereo_outcome_early(
             and mapping information.
         rxn (rdchiralReaction): Reaction/template container providing the reactant-side
             template used for substructure matching.
-        keep_mapnums (bool): If True, this function returns None (early-return is
-            not supported for mapped output). If False, atom map numbers are cleared
-            from the product molecule before converting to SMILES.
+        keep_mapnums (bool): If True, early return is not supported (mapped output
+            requires the full pipeline).
+        enforce_reactants_smarts_constraints (bool): If True, outcomes produced by the
+            chiral re-run are post-filtered to enforce product-side SMARTS constraints,
+            matching the filtering applied to the original outcomes.
 
     Returns:
-        Optional[List[str]]: If the early-return conditions are not met, returns None.
-            Otherwise returns a list containing a single product SMILES string (with
-            atom map numbers cleared).
+        Tuple[bool, bool, Tuple[Tuple[Chem.Mol, ...], ...]]:
+            - First element: True if the outcomes may be formatted directly via
+              `format_early_outcomes`; False if the full `handle_outcomes` pipeline
+              is required.
+            - Second element: True if any outcome contains a reactant atom
+              duplicated across product fragments (the pseudo-intramolecular case
+              requiring the map-number-based merge in
+              `merge_outcomes_intramolecular`); False if no outcome does. Always
+              False when the first element is True. Callers may use this to skip
+              the duplicate-detection scan in `merge_outcomes_intramolecular`.
+            - Third element: the outcomes to format — the input outcomes, or outcomes
+              re-run on the chiral reactant when only spectator stereochemistry is
+              present.
 
     Note:
-        Early return is skipped when either the reactants or template is chiral, when
-        there is not exactly one outcome, when `keep_mapnums` is True, or when any
-        outcome contains multiple product molecules.
+        Early return is disallowed when the reaction can affect stereochemistry (a
+        chiral template, or reactant stereo on a mapped atom/bond in the reaction
+        core), when `keep_mapnums` is True, or when any outcome contains a reactant
+        atom duplicated across product fragments (the pseudo-intramolecular case
+        requiring `merge_outcomes_intramolecular`).
     """
-    if reactants.reactants_is_chiral or rxn.template_is_chiral:
-        return None
+    merge_needed = False
+    for outcome in outcomes:
+        if len(outcome) > 1 and _outcome_has_duplicated_atoms(outcome):
+            # Pseudo-intramolecular outcome: RDKit duplicated reactant atoms across
+            # product fragments; requires merge_outcomes_intramolecular.
+            merge_needed = True
+            break
 
-    # TODO: remove this guard
-    if len(outcomes) != 1:
-        return None
+    if merge_needed:
+        return False, merge_needed, outcomes
 
     # TODO: remove this guard
     if keep_mapnums:
-        return None
+        return False, merge_needed, outcomes
 
-    if {len(outcome) for outcome in outcomes} != {1}:
-        return None
+    if _reaction_touches_stereo(outcomes, reactants, rxn):
+        return False, merge_needed, outcomes
 
-    final_outcomes_list: List[str] = []
+    if reactants.reactants_is_chiral:
+        # Only spectator stereochemistry remains: the template is achiral and no
+        # reactant stereocenter or stereogenic bond lies in the reaction core
+        # (guaranteed by _reaction_touches_stereo above). RunReactants was called
+        # on the achiral reactant, so re-run on the chiral reactant to carry
+        # spectator stereo through to the products.
+        rxn.reset()
+        outcomes = rxn.rxn.RunReactants((reactants.reactants,))
+        if enforce_reactants_smarts_constraints:
+            outcomes = filter_outcomes_by_smarts_constraints(
+                outcomes, rxn.product_smarts_constraints
+            )
 
+    return True, merge_needed, outcomes
+
+
+def format_early_outcomes(
+    outcomes: Tuple[Tuple[Chem.Mol, ...], ...],
+) -> List[str]:
+    """
+    Convert early-return reaction outcomes directly to product SMILES.
+
+    Formats outcomes that `can_return_early` has cleared to bypass the full
+    outcome-handling pipeline: multi-product outcomes are combined with
+    `rdmolops.CombineMols` and sanitized, atom map numbers are cleared, and each
+    outcome is converted to SMILES. Outcomes that fail sanitization or have
+    detectable chemistry problems are dropped, matching `handle_outcomes`.
+
+    Args:
+        outcomes (Tuple[Tuple[Chem.Mol, ...], ...]): Outcomes approved for early
+            return, where each element is an outcome containing one or more
+            product molecules.
+
+    Returns:
+        List[str]: Deduplicated list of product SMILES strings with atom map
+            numbers cleared.
+    """
+    final_outcomes = set()
     for outcome in outcomes:
-        for a in outcome[0].GetAtoms():
+        mol = outcome[0]
+        for j in range(1, len(outcome)):
+            mol = rdmolops.CombineMols(mol, outcome[j])
+        if len(outcome) > 1:
+            # CombineMols output is unsanitized; handle_outcomes sanitizes
+            # whenever outcomes were merged.
+            mol = sanitize_mol(mol)
+            if mol is None:
+                continue
+        for a in mol.GetAtoms():
             a.SetAtomMapNum(0)
-        unmapped_outcome_smiles = Chem.MolToSmiles(outcome[0])
-        final_outcomes_list.append(unmapped_outcome_smiles)
+        if Chem.DetectChemistryProblems(mol):
+            # handle_outcomes drops outcomes with detectable chemistry problems.
+            continue
+        final_outcomes.add(Chem.MolToSmiles(mol))
 
-    return final_outcomes_list
+    return list(final_outcomes)
 
 
 def handle_outcomes(
@@ -778,6 +1007,7 @@ def handle_outcomes(
     reactants: rdchiralReactants,
     rxn: rdchiralReaction,
     keep_mapnums: bool,
+    has_duplicated_atoms: Optional[bool] = None,
 ) -> Union[Tuple[str, Tuple[str, Tuple[int, ...]]], Tuple[None, None]]:
     """
     Post-process a single raw RDKit reaction outcome into a final product SMILES.
@@ -796,6 +1026,11 @@ def handle_outcomes(
             product templates and atom-map lookup tables.
         keep_mapnums (bool): If False, clear all atom-map numbers from the final
             product molecule before generating the returned SMILES.
+        has_duplicated_atoms (Optional[bool]): If the caller has already determined
+            whether this outcome contains a reactant atom duplicated across product
+            fragments, pass that result to skip the duplicate-detection scan in
+            `merge_outcomes_intramolecular`. Pass None (default) to let the merge
+            detect duplicates itself.
 
     Returns:
         Union[Tuple[str, Tuple[str, Tuple[int, ...]]], Tuple[None, None]]:
@@ -827,7 +1062,9 @@ def handle_outcomes(
 
     outcomes_were_merged = False
     if len(outcome) > 1:
-        merged_outcome = merge_outcomes_intramolecular(outcome)
+        merged_outcome = merge_outcomes_intramolecular(
+            outcome, has_duplicated_atoms=has_duplicated_atoms
+        )
         outcomes_were_merged = True
     else:
         merged_outcome = outcome[0]
@@ -835,6 +1072,7 @@ def handle_outcomes(
     # TODO: cannot change atom map numbers in atoms_rt permanently?
     atoms_pt_map = rxn.atoms_pt_map
     atoms_pt, atoms_p, atoms_pt_map = assign_pt_mapnums(merged_outcome, atoms_pt_map)
+    
 
     # Copy reaction template so we can play around with map numbers
     template_r = rxn.template_r
@@ -1065,12 +1303,20 @@ def validate_chiral_match(
     return bool(skip_outcome)
 
 
-def merge_outcomes_intramolecular(outcome: Tuple[Chem.Mol, ...]) -> Chem.Mol:
+def merge_outcomes_intramolecular(
+    outcome: Tuple[Chem.Mol, ...],
+    has_duplicated_atoms: Optional[bool] = None,
+) -> Chem.Mol:
     """
     Merge a tuple of product molecules into a single product molecule for pseudo-intramolecular handling.
 
     Args:
         outcome (Tuple[Chem.Mol, ...]): Tuple of product molecules produced by applying a reaction.
+        has_duplicated_atoms (Optional[bool]): If the caller has already determined
+            whether the outcome contains a reactant atom duplicated across product
+            fragments (e.g., via `react_atom_idx` properties), pass that result to
+            skip the duplicate-detection scan. Pass None (default) to detect
+            duplicates by scanning atom-map numbers.
 
     Returns:
         Chem.Mol: A single merged product molecule.
@@ -1081,17 +1327,22 @@ def merge_outcomes_intramolecular(outcome: Tuple[Chem.Mol, ...]) -> Chem.Mol:
         copies bond type, stereo, and bond direction when adding missing bonds. Otherwise, it merges
         products using `rdmolops.CombineMols`.
     """
-    mapnums = []
-    merged_map_to_id = {}
-    for i, m in enumerate(outcome):
-        for a in m.GetAtoms():
-            mapnum = a.GetAtomMapNum()
-            if not mapnum:
-                continue
-            mapnums.append(mapnum)
-            if i == 0:
-                merged_map_to_id[mapnum] = a.GetIdx()
-    if len(mapnums) != len(set(mapnums)):  # duplicate?
+    if has_duplicated_atoms is None or has_duplicated_atoms:
+        # Scan map numbers to detect duplication and/or build the fragment-0
+        # mapnum -> atom index lookup required by the map-number-based merge.
+        mapnums = []
+        merged_map_to_id = {}
+        for i, m in enumerate(outcome):
+            for a in m.GetAtoms():
+                mapnum = a.GetAtomMapNum()
+                if not mapnum:
+                    continue
+                mapnums.append(mapnum)
+                if i == 0:
+                    merged_map_to_id[mapnum] = a.GetIdx()
+        if has_duplicated_atoms is None:
+            has_duplicated_atoms = len(mapnums) != len(set(mapnums))
+    if has_duplicated_atoms:  # duplicate?
         # need to do a fancy merge
         merged_mol = Chem.RWMol(outcome[0])
         for j in range(1, len(outcome)):

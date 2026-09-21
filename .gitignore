@@ -18,6 +18,7 @@
 
 !scripts/
 !scripts/speed_benchmark_script.py
+!scripts/rdkit_benchmark_script.py
 !scripts/run_speed_benchmark_envs.py
 !scripts/zinc250k.txt
 !scripts/uspto_top_1k_templates.txt

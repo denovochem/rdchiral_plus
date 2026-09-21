@@ -12,6 +12,7 @@ The helper script `scripts/run_speed_benchmark_envs.py` builds and runs multiple
 - `rdchiral_plus`: this fork installed normally (pure-Python mode).
 - `rdchiral_plus_mypyc`: this fork installed with `RDCHIRAL_USE_MYPYC=1`.
 - `rdchiral_cpp`: the `rdchiral_cpp` conda-forge package (run with `--cpp`).
+- `rdkit`: naive RDKit baseline (`rdkit` only, no rdchiral) run via `scripts/rdkit_benchmark_script.py`. Covers only template initialization (`ReactionFromSmarts`), reactant initialization (`MolFromSmiles`), the text-to-products pipeline (equivalent to `rdchiralRunText`), and pre-initialized `RunReactants` (equivalent to `rdchiralRun`).
 
 ## Metrics
 
@@ -37,7 +38,7 @@ python scripts/run_speed_benchmark_envs.py --reinstall
 
 Benchmarks are orchestrated by `scripts/run_speed_benchmark_envs.py`.
 
-- Each environment is installed into an isolated env (uv venvs for `orig`/`rdchiral_plus`/`rdchiral_plus_mypyc`, and a conda prefix env for `cpp`).
+- Each environment is installed into an isolated env (uv venvs for `orig`/`rdchiral_plus`/`rdchiral_plus_mypyc`/`rdkit`, and a conda prefix env for `cpp`).
 - The benchmark script is copied to a temporary directory and executed from there to avoid importing in-tree sources.
 - The runner sets `RDCHIRAL_REPO_ROOT` so the benchmark script can find the repository data files.
 
