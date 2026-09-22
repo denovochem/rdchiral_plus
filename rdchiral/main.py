@@ -756,7 +756,6 @@ def _template_atom_env_unchanged(rxn: rdchiralReaction, mapnum: int) -> bool:
 
 
 def _reaction_touches_stereo(
-    outcomes: Tuple[Tuple[Chem.Mol, ...], ...],
     reactants: rdchiralReactants,
     rxn: rdchiralReaction,
 ) -> bool:
@@ -776,9 +775,6 @@ def _reaction_touches_stereo(
     require the full pipeline.
 
     Args:
-        outcomes (Tuple[Tuple[Chem.Mol, ...], ...]): Outcomes returned by reaction
-            application, where each element is an outcome containing one or more
-            product molecules.
         reactants (rdchiralReactants): Initialized reactants container.
         rxn (rdchiralReaction): Initialized reaction container.
 
@@ -788,10 +784,13 @@ def _reaction_touches_stereo(
             products or carried through unchanged by a chiral re-run.
 
     Note:
-        Reactant atom-map numbers cannot be compared to template map numbers
-        directly: under default initialization they are positional (atom index + 1)
-        and share no namespace with the template. The outcome atom properties
-        `react_atom_idx` and `old_mapno` provide the correct join.
+        Stereocenter-to-template-atom assignments are enumerated with
+        ``GetSubstructMatches(rxn.template_r, uniquify=False)`` on the achiral
+        reactants rather than by inspecting ``react_atom_idx``/``old_mapno``
+        properties on outcome atoms. ``RunReactants`` generates outcomes from
+        these same matches, so the set of matches is a superset of the set of
+        (possibly deduplicated) outcomes; checking extra matches can only
+        over-trigger the full pipeline, never under-trigger it.
     """
     if rxn.template_is_chiral:
         return True
@@ -806,40 +805,42 @@ def _reaction_touches_stereo(
         for a in reactants.reactants.GetAtoms()
         if a.GetChiralTag() != ChiralType.CHI_UNSPECIFIED
     }
-    for outcome in outcomes:
-        # For each stereocenter, collect the map numbers of the template atoms it
-        # was matched to within this outcome (0 = unmapped template atom).
-        stereo_match_mapnums: Dict[int, set] = {i: set() for i in stereo_idxs}
-        for mol in outcome:
-            for a in mol.GetAtoms():
-                if not a.HasProp("react_atom_idx"):
-                    continue
-                ridx = a.GetIntProp("react_atom_idx")
-                if ridx in stereo_match_mapnums:
-                    mapno = a.GetIntProp("old_mapno") if a.HasProp("old_mapno") else 0
-                    stereo_match_mapnums[ridx].add(mapno)
-        for mapnos in stereo_match_mapnums.values():
-            if not mapnos or 0 in mapnos:
-                # Stereocenter missing from this outcome's mapped atoms: it was
-                # either deleted or matched to an unmapped template atom, whose
-                # product atoms carry no react_atom_idx and drop the chiral tag.
+
+    # Precompute the template atoms that can faithfully carry a reactant chiral
+    # tag: mapped on both template sides, not tetrahedral-capable (an achiral
+    # tetra-capable template atom makes the match ambiguous and
+    # validate_chiral_match rejects it), and bonding unchanged between the
+    # reactant and product templates (a carried tag may otherwise be assigned
+    # incorrect parity).
+    good_tidx = set()
+    for a in rxn.template_r.GetAtoms():
+        mapno = a.GetAtomMapNum()
+        if mapno == 0:
+            continue
+        rt_atom = rxn.atoms_rt_map.get(mapno)
+        pt_atom = rxn.atoms_pt_map.get(mapno)
+        if rt_atom is None or pt_atom is None:
+            continue
+        if template_atom_could_have_been_tetra(
+            rt_atom
+        ) or template_atom_could_have_been_tetra(pt_atom):
+            continue
+        if not _template_atom_env_unchanged(rxn, mapno):
+            continue
+        good_tidx.add(a.GetIdx())
+
+    # Each match tuple is one template->reactant atom assignment; outcomes were
+    # generated from these same matches.
+    for match in reactants.reactants_achiral.GetSubstructMatches(
+        rxn.template_r, uniquify=False
+    ):
+        for tidx, ridx in enumerate(match):
+            if ridx not in stereo_idxs:
+                continue
+            if tidx not in good_tidx:
+                # Stereocenter matched to an unmapped, tetra-capable, or
+                # bonding-changed template atom: tag can't be carried reliably.
                 return True
-            for mapno in mapnos:
-                rt_atom = rxn.atoms_rt_map.get(mapno)
-                pt_atom = rxn.atoms_pt_map.get(mapno)
-                if (
-                    rt_atom is not None
-                    and template_atom_could_have_been_tetra(rt_atom)
-                ) or (
-                    pt_atom is not None
-                    and template_atom_could_have_been_tetra(pt_atom)
-                ):
-                    # Template could have specified chirality but did not: the
-                    # match is ambiguous and validate_chiral_match rejects it.
-                    return True
-                if not _template_atom_env_unchanged(rxn, mapno):
-                    # Mapped match with changed bonding: carried tag may be wrong.
-                    return True
     return False
 
 
@@ -941,7 +942,7 @@ def can_return_early(
     if keep_mapnums:
         return False, merge_needed, outcomes
 
-    if _reaction_touches_stereo(outcomes, reactants, rxn):
+    if _reaction_touches_stereo(reactants, rxn):
         return False, merge_needed, outcomes
 
     if reactants.reactants_is_chiral:
