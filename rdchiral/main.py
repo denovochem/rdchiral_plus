@@ -792,6 +792,10 @@ def _reaction_touches_stereo(
         (possibly deduplicated) outcomes; checking extra matches can only
         over-trigger the full pipeline, never under-trigger it.
     """
+
+    # if "@" in rxn.reaction_smarts.split(">>")[0] and "@" not in rxn.reaction_smarts.split(">>")[1]:
+    #     return True
+
     if rxn.template_is_chiral:
         return True
     if not reactants.reactants_is_chiral:
